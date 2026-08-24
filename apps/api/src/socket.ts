@@ -5,6 +5,7 @@ import type {
   SocketData,
 } from "@four/contracts";
 import {
+  AccountSubscribeCommandSchema,
   MoveCommandSchema,
   RematchCommandSchema,
   ResignCommandSchema,
@@ -22,8 +23,10 @@ import { AppError, failure } from "./errors";
 import type { GameService } from "./game-service";
 import type { AppLogger } from "./logger";
 import type { Metrics } from "./metrics";
+import type { SocialService } from "./social-service";
 
 const roomName = (gameId: string) => `game:${gameId}`;
+const accountRoomName = (userId: string) => `account:${userId}`;
 
 interface SocketDependencies {
   auth: Auth;
@@ -32,10 +35,11 @@ interface SocketDependencies {
   logger: AppLogger;
   metrics: Metrics;
   redis: RedisClientType;
+  social: SocialService;
 }
 
 export async function createGameSocket(httpServer: HttpServer, dependencies: SocketDependencies) {
-  const { auth, config, games, logger, metrics, redis } = dependencies;
+  const { auth, config, games, logger, metrics, redis, social } = dependencies;
   const adapterRedis = redis.duplicate();
   await adapterRedis.connect();
 
@@ -52,6 +56,7 @@ export async function createGameSocket(httpServer: HttpServer, dependencies: Soc
     },
   );
   const gameNamespace = io.of("/game");
+  const accountNamespace = io.of("/account");
 
   const broadcastPresence = async (gameId: string) => {
     const connected = await gameNamespace.in(roomName(gameId)).fetchSockets();
@@ -68,6 +73,15 @@ export async function createGameSocket(httpServer: HttpServer, dependencies: Soc
     }
   };
 
+  const broadcastAccount = async (userId: string) => {
+    try {
+      const state = await social.getSnapshot(userId);
+      accountNamespace.to(accountRoomName(userId)).emit("account:state", state);
+    } catch (error) {
+      logger.error({ err: error, userId }, "Unable to broadcast account state");
+    }
+  };
+
   const enforceCommandRate = async (userId: string) => {
     const key = `rate:socket:${userId}:${Math.floor(Date.now() / 1000)}`;
     const count = await redis.incr(key);
@@ -76,7 +90,7 @@ export async function createGameSocket(httpServer: HttpServer, dependencies: Soc
       throw new AppError("RATE_LIMITED", "Too many game actions. Slow down for a moment.");
   };
 
-  gameNamespace.use(async (socket, next) => {
+  const authenticateSocket: Parameters<typeof gameNamespace.use>[0] = async (socket, next) => {
     try {
       const origin = socket.handshake.headers.origin;
       if (origin && origin !== config.appOrigin) {
@@ -96,6 +110,28 @@ export async function createGameSocket(httpServer: HttpServer, dependencies: Soc
     } catch (error) {
       next(error instanceof Error ? error : new Error("Unable to authenticate the socket."));
     }
+  };
+  gameNamespace.use(authenticateSocket);
+  accountNamespace.use(authenticateSocket);
+
+  accountNamespace.on("connection", (socket) => {
+    metrics.socketConnections.inc();
+    void socket.join(accountRoomName(socket.data.userId));
+
+    socket.on("account:subscribe", async (raw, ack) => {
+      try {
+        AccountSubscribeCommandSchema.parse(raw);
+        const state = await social.getSnapshot(socket.data.userId);
+        await socket.join(accountRoomName(socket.data.userId));
+        ack({ ok: true, data: state });
+      } catch (error) {
+        ack(failure(error));
+      }
+    });
+
+    socket.on("disconnect", () => {
+      metrics.socketConnections.dec();
+    });
   });
 
   gameNamespace.on("connection", (socket) => {
@@ -197,6 +233,7 @@ export async function createGameSocket(httpServer: HttpServer, dependencies: Soc
   return {
     io,
     broadcastGame,
+    broadcastAccount,
     close: async () => {
       await new Promise<void>((resolve) => io.close(() => resolve()));
       await adapterRedis.quit();

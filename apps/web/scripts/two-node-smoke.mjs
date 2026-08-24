@@ -35,9 +35,9 @@ async function signIn(baseUrl, email) {
   return cookies.join("; ");
 }
 
-function connect(baseUrl, cookie) {
+function connect(baseUrl, cookie, namespace = "game") {
   return new Promise((resolve, reject) => {
-    const socket = io(`${baseUrl}/game`, {
+    const socket = io(`${baseUrl}/${namespace}`, {
       path: "/socket.io",
       transports: ["websocket"],
       extraHeaders: { cookie, origin },
@@ -55,6 +55,19 @@ function connect(baseUrl, cookie) {
       clearTimeout(timer);
       reject(error);
     });
+  });
+}
+
+function waitForAccount(socket, predicate) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Account state was not broadcast.")), 5_000);
+    const listener = (state) => {
+      if (!predicate(state)) return;
+      clearTimeout(timer);
+      socket.off("account:state", listener);
+      resolve(state);
+    };
+    socket.on("account:state", listener);
   });
 }
 
@@ -90,7 +103,7 @@ const guestCookie = await signIn(secondApi, guestEmail);
 const createResponse = await request(firstApi, "/api/games", {
   method: "POST",
   headers: { cookie: hostCookie },
-  body: JSON.stringify({ turnSeconds: 60 }),
+  body: JSON.stringify({ turnSeconds: 60, invitation: { type: "link" } }),
 });
 const created = (await createResponse.json()).data.game;
 const joinResponse = await request(secondApi, `/api/invites/${created.inviteCode}/join`, {
@@ -121,7 +134,68 @@ try {
   });
   await bothBroadcasts;
   await command(hostSocket, "game:resign", { gameId: active.id, commandId: randomUUID() });
-  console.log("Two-node Socket.IO broadcast smoke test passed.");
+
+  const hostPlayer = active.players.find((player) => player.userId === active.hostUserId);
+  const guestPlayer = active.players.find((player) => player.userId !== active.hostUserId);
+  if (!hostPlayer || !guestPlayer) throw new Error("Unable to resolve smoke-test players.");
+  const hostAccount = await connect(firstApi, hostCookie, "account");
+  const guestAccount = await connect(secondApi, guestCookie, "account");
+  try {
+    const [hostSocial, guestSocial] = await Promise.all([
+      command(hostAccount, "account:subscribe", {}),
+      command(guestAccount, "account:subscribe", {}),
+    ]);
+    if (!hostSocial.friends.some((friend) => friend.user.userId === guestPlayer.userId)) {
+      const guestRequestBroadcast = waitForAccount(
+        guestAccount,
+        (state) => state.incomingFriendRequests.length > guestSocial.incomingFriendRequests.length,
+      );
+      await request(firstApi, "/api/friend-requests", {
+        method: "POST",
+        headers: { cookie: hostCookie },
+        body: JSON.stringify({ username: guestPlayer.username }),
+      });
+      const guestWithRequest = await guestRequestBroadcast;
+      const requestId = guestWithRequest.incomingFriendRequests.find(
+        (friendRequest) => friendRequest.user.userId === hostPlayer.userId,
+      )?.id;
+      if (!requestId) throw new Error("Friend request was not delivered across API nodes.");
+      const hostFriendBroadcast = waitForAccount(hostAccount, (state) =>
+        state.friends.some((friend) => friend.user.userId === guestPlayer.userId),
+      );
+      await request(secondApi, `/api/friend-requests/${requestId}/accept`, {
+        method: "POST",
+        headers: { cookie: guestCookie },
+        body: "{}",
+      });
+      await hostFriendBroadcast;
+    }
+
+    const guestGameBroadcast = waitForAccount(guestAccount, (state) =>
+      state.incomingGameInvitations.some(
+        (invitation) => invitation.host.userId === hostPlayer.userId,
+      ),
+    );
+    const targetedResponse = await request(firstApi, "/api/games", {
+      method: "POST",
+      headers: { cookie: hostCookie },
+      body: JSON.stringify({
+        turnSeconds: 60,
+        invitation: { type: "friend", userId: guestPlayer.userId },
+      }),
+    });
+    const targeted = (await targetedResponse.json()).data.game;
+    await guestGameBroadcast;
+    await request(secondApi, `/api/game-invitations/${targeted.id}/accept`, {
+      method: "POST",
+      headers: { cookie: guestCookie },
+      body: "{}",
+    });
+  } finally {
+    hostAccount.disconnect();
+    guestAccount.disconnect();
+  }
+  console.log("Two-node game and account Socket.IO broadcast smoke test passed.");
 } finally {
   hostSocket.disconnect();
   guestSocket.disconnect();

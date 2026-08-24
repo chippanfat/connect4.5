@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { AppError } from "./errors";
 import { GameService } from "./game-service";
+import { SocialService } from "./social-service";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const integration = databaseUrl ? describe : describe.skip;
@@ -17,6 +18,7 @@ integration("GameService with PostgreSQL", () => {
   if (!databaseUrl) return;
   const database = createDatabase(databaseUrl);
   const service = new GameService(database.db);
+  const social = new SocialService(database.db);
   const hostId = randomUUID();
   const guestId = randomUUID();
   const thirdId = randomUUID();
@@ -234,5 +236,90 @@ integration("GameService with PostgreSQL", () => {
     const rejected = outcomes.find((outcome) => outcome.status === "rejected");
     expect(rejected).toMatchObject({ reason: { code: "STALE_VERSION" } });
     expect((await service.getSnapshot(raceGame.id, hostId)).moveCount).toBe(1);
+  });
+
+  it("supports exact username requests, decline closure, and recipient reopening", async () => {
+    const found = await social.searchUsername(hostId, "GUEST");
+    expect(found.user).toMatchObject({ userId: guestId, username: "Guest" });
+    await expect(social.searchUsername(hostId, "host")).rejects.toMatchObject({
+      code: "CANNOT_ADD_SELF",
+    } satisfies Partial<AppError>);
+
+    const duplicateResults = await Promise.allSettled([
+      social.sendFriendRequest(hostId, "guest"),
+      social.sendFriendRequest(hostId, "Guest"),
+    ]);
+    expect(duplicateResults.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect((await social.getSnapshot(guestId)).incomingFriendRequests).toHaveLength(1);
+
+    const requestId = (await social.getSnapshot(guestId)).incomingFriendRequests[0]!.id;
+    await social.declineFriendRequest(requestId, guestId);
+    expect(await social.searchUsername(hostId, "guest")).toMatchObject({
+      relationship: "unavailable",
+      canSendRequest: false,
+    });
+    expect(await social.searchUsername(guestId, "host")).toMatchObject({
+      relationship: "none",
+      canSendRequest: true,
+    });
+
+    await social.sendFriendRequest(guestId, "host");
+    const reopened = (await social.getSnapshot(hostId)).incomingFriendRequests[0]!;
+    await social.acceptFriendRequest(reopened.id, hostId);
+    expect((await social.getSnapshot(hostId)).friends[0]?.user.userId).toBe(guestId);
+  });
+
+  it("reserves friend games, serializes duplicate challenges, and cancels waits on removal", async () => {
+    await expect(
+      service.createGame(hostId, 60, { type: "friend", userId: guestId }),
+    ).rejects.toMatchObject({ code: "FRIENDSHIP_REQUIRED" } satisfies Partial<AppError>);
+
+    await social.sendFriendRequest(hostId, "guest");
+    const requestId = (await social.getSnapshot(guestId)).incomingFriendRequests[0]!.id;
+    await social.acceptFriendRequest(requestId, guestId);
+
+    const challengeResults = await Promise.allSettled([
+      service.createGame(hostId, 60, { type: "friend", userId: guestId }),
+      service.createGame(guestId, 30, { type: "friend", userId: hostId }),
+    ]);
+    expect(challengeResults.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const challenge = challengeResults.find(
+      (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof service.createGame>>> =>
+        result.status === "fulfilled",
+    )!.value;
+    expect(challenge.inviteCode).toBeNull();
+    expect(challenge.pendingInvitee).not.toBeNull();
+
+    const inviteeId = challenge.pendingInvitee!.userId;
+    const active = await service.acceptGameInvitation(challenge.id, inviteeId);
+    expect(active.status).toBe("active");
+    expect(active.turnDeadlineAt).toBeTruthy();
+
+    const hostForNext = active.hostUserId;
+    const inviteeForNext = active.players.find((player) => player.userId !== hostForNext)!.userId;
+    const expired = await service.createGame(hostForNext, 30, {
+      type: "friend",
+      userId: inviteeForNext,
+    });
+    await database.db
+      .update(games)
+      .set({ inviteExpiresAt: new Date(Date.now() - 1_000) })
+      .where(eq(games.id, expired.id));
+    await expect(service.acceptGameInvitation(expired.id, inviteeForNext)).rejects.toMatchObject({
+      code: "INVITE_EXPIRED",
+    } satisfies Partial<AppError>);
+    expect((await service.getSnapshot(expired.id, hostForNext)).status).toBe("expired");
+
+    const waiting = await service.createGame(hostForNext, 120, {
+      type: "friend",
+      userId: inviteeForNext,
+    });
+    const removal = await social.removeFriend(inviteeForNext, hostForNext);
+    expect(removal.cancelledGameIds).toContain(waiting.id);
+    expect((await service.getSnapshot(waiting.id, hostForNext)).status).toBe("cancelled");
+    expect((await service.getSnapshot(active.id, hostForNext)).status).toBe("active");
+    await expect(
+      service.createGame(hostForNext, 60, { type: "friend", userId: inviteeForNext }),
+    ).rejects.toMatchObject({ code: "FRIENDSHIP_REQUIRED" } satisfies Partial<AppError>);
   });
 });

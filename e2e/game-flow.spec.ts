@@ -110,6 +110,48 @@ test("two verified players can finish a private game and start a rematch", async
   await guestContext.close();
 });
 
+test("friends can exchange and accept a persistent dashboard game invitation", async ({
+  browser,
+  request,
+}) => {
+  test.skip(!process.env.RUN_FULL_E2E, "Set RUN_FULL_E2E=1 with local infrastructure running.");
+  const suffix = Date.now().toString(36);
+  const hostUsername = `fhost_${suffix}`;
+  const guestUsername = `fguest_${suffix}`;
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  const host = await hostContext.newPage();
+  const guest = await guestContext.newPage();
+  await signUpAndVerify(host, request, hostUsername, `fhost-${suffix}@example.test`);
+  await signUpAndVerify(guest, request, guestUsername, `fguest-${suffix}@example.test`);
+
+  await host.goto("/friends");
+  await host.getByLabel("Username").fill(guestUsername.toUpperCase());
+  await host.getByRole("button", { name: "Search" }).click();
+  await expect(host.getByText(guestUsername, { exact: true })).toBeVisible();
+  await host.getByRole("button", { name: "Add friend" }).click();
+
+  await guest.goto("/dashboard");
+  await expect(guest.getByText(`${hostUsername} sent you a friend request`)).toBeVisible();
+  await guest.reload();
+  await guest.getByRole("button", { name: "Accept" }).click();
+
+  await host.goto("/dashboard");
+  await host.getByLabel("Invite with").selectOption("friend");
+  await host.getByRole("combobox", { name: "Friend", exact: true }).selectOption({ index: 1 });
+  await host.getByRole("button", { name: "Invite friend" }).click();
+  await expect(host.getByText(`Waiting for ${guestUsername} to accept`).first()).toBeVisible();
+
+  await expect(guest.getByText(`${hostUsername} invited you to play`)).toBeVisible();
+  await guest.reload();
+  await guest.getByRole("button", { name: "Play" }).click();
+  await expect(guest).toHaveURL(/\/game\//);
+  await expect(host.getByText(/Your turn|is thinking/).first()).toBeVisible();
+
+  await hostContext.close();
+  await guestContext.close();
+});
+
 test("the server clock finishes a disconnected player's turn", async ({
   browser,
   browserName,

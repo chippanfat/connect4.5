@@ -164,6 +164,7 @@ export function GamePage() {
   const userId = session?.user.id ?? "";
   const me = game.players.find((player) => player.userId === userId);
   const opponent = game.players.find((player) => player.userId !== userId);
+  const opponentUsername = opponent?.username ?? game.pendingInvitee?.username;
   const myTurn = game.currentTurnUserId === userId;
   const canMove = connected && game.status === "active" && myTurn && seconds > 0;
   const requested = game.rematchRequestedBy.includes(userId);
@@ -171,11 +172,13 @@ export function GamePage() {
 
   const statusText =
     game.status === "waiting"
-      ? "Waiting for your opponent"
+      ? game.pendingInvitee
+        ? `Waiting for ${game.pendingInvitee.username} to accept`
+        : "Waiting for your opponent"
       : game.status === "active"
         ? myTurn
           ? "Your turn"
-          : `${opponent?.username ?? "Opponent"} is thinking`
+          : `${opponentUsername ?? "Opponent"} is thinking`
         : game.endReason === "draw"
           ? "It’s a draw"
           : game.winnerUserId === userId
@@ -184,7 +187,7 @@ export function GamePage() {
               : "You won!"
             : game.endReason === "cancelled" || game.endReason === "expired"
               ? "Game not played"
-              : `${opponent?.username ?? "Your opponent"} won`;
+              : `${opponentUsername ?? "Your opponent"} won`;
 
   function move(column: number) {
     const socket = socketRef.current;
@@ -289,13 +292,17 @@ export function GamePage() {
         </div>
         <aside className="player-panel player-panel--right">
           <span className={`avatar-disc avatar-disc--${opponent?.color ?? "empty"}`}>
-            <i>{opponent?.username.slice(0, 1).toUpperCase() ?? "?"}</i>
+            <i>{opponentUsername?.slice(0, 1).toUpperCase() ?? "?"}</i>
           </span>
           <div>
             <small>Opponent</small>
-            <strong>{opponent?.username ?? "Waiting…"}</strong>
+            <strong>{opponentUsername ?? "Waiting…"}</strong>
             <span>
-              {opponent && connectedUsers.includes(opponent.userId) ? "Connected" : "Offline"}
+              {game.status === "waiting" && game.pendingInvitee
+                ? "Invitation pending"
+                : opponent && connectedUsers.includes(opponent.userId)
+                  ? "Connected"
+                  : "Offline"}
             </span>
           </div>
         </aside>
@@ -306,13 +313,23 @@ export function GamePage() {
           <div className="waiting-panel">
             <div>
               <p className="eyebrow">Your private table</p>
-              <h2>Send the invite to a friend</h2>
-              <p>The seat is only claimed after they sign in and choose to join.</p>
+              <h2>
+                {game.pendingInvitee
+                  ? `${game.pendingInvitee.username} has been invited`
+                  : "Send the invite to a friend"}
+              </h2>
+              <p>
+                {game.pendingInvitee
+                  ? "Their seat is reserved until they accept or decline from the dashboard."
+                  : "The seat is only claimed after they sign in and choose to join."}
+              </p>
             </div>
-            <button className="button button--primary" onClick={() => void copyInvite()}>
-              {copied ? <Check size={18} /> : <Copy size={18} />}
-              {copied ? "Invite copied" : "Copy invite link"}
-            </button>
+            {game.inviteCode && (
+              <button className="button button--primary" onClick={() => void copyInvite()}>
+                {copied ? <Check size={18} /> : <Copy size={18} />}
+                {copied ? "Invite copied" : "Copy invite link"}
+              </button>
+            )}
           </div>
         )}
         {game.status === "active" && (

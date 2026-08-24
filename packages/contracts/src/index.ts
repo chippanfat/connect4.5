@@ -11,7 +11,7 @@ export const GameStatusSchema = z.enum(["waiting", "active", "completed", "cance
 export type GameStatus = z.infer<typeof GameStatusSchema>;
 
 export const GameEndReasonSchema = z
-  .enum(["connect_four", "draw", "resignation", "timeout", "cancelled", "expired"])
+  .enum(["connect_four", "draw", "resignation", "timeout", "cancelled", "declined", "expired"])
   .nullable();
 export type GameEndReason = z.infer<typeof GameEndReasonSchema>;
 
@@ -24,6 +24,12 @@ export const PublicPlayerSchema = z.object({
   color: DiscColorSchema.nullable(),
 });
 export type PublicPlayer = z.infer<typeof PublicPlayerSchema>;
+
+export const PublicUserSchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+});
+export type PublicUser = z.infer<typeof PublicUserSchema>;
 
 export const CoordinateSchema = z.object({
   row: z.number().int().min(0).max(5),
@@ -53,6 +59,7 @@ export const GameSnapshotSchema = z.object({
   turnDeadlineAt: z.string().datetime().nullable(),
   inviteCode: z.string().nullable(),
   inviteExpiresAt: z.string().datetime().nullable(),
+  pendingInvitee: PublicUserSchema.nullable(),
   rematchRequestedBy: z.array(z.string()),
   seriesId: z.string().uuid(),
   rematchOfId: z.string().uuid().nullable(),
@@ -76,6 +83,7 @@ export const GameListItemSchema = GameSnapshotSchema.pick({
   turnDeadlineAt: true,
   inviteCode: true,
   inviteExpiresAt: true,
+  pendingInvitee: true,
   createdAt: true,
   startedAt: true,
   endedAt: true,
@@ -90,8 +98,79 @@ export const InvitePreviewSchema = z.object({
 });
 export type InvitePreview = z.infer<typeof InvitePreviewSchema>;
 
-export const CreateGameInputSchema = z.object({ turnSeconds: TurnSecondsSchema });
+export const GameInvitationSelectionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("link") }),
+  z.object({ type: z.literal("friend"), userId: z.string().min(1) }),
+]);
+export type GameInvitationSelection = z.infer<typeof GameInvitationSelectionSchema>;
+
+export const CreateGameInputSchema = z.object({
+  turnSeconds: TurnSecondsSchema,
+  invitation: GameInvitationSelectionSchema,
+});
 export type CreateGameInput = z.infer<typeof CreateGameInputSchema>;
+
+export const UsernameSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(20)
+  .regex(/^[a-zA-Z0-9_]+$/);
+export const UsernameSearchQuerySchema = z.object({ username: UsernameSchema });
+export const CreateFriendRequestInputSchema = z.object({ username: UsernameSchema });
+
+export const FriendRelationshipSchema = z.enum([
+  "none",
+  "incoming_request",
+  "outgoing_request",
+  "friends",
+  "unavailable",
+]);
+export type FriendRelationship = z.infer<typeof FriendRelationshipSchema>;
+
+export const UserSearchResultSchema = z.object({
+  user: PublicUserSchema,
+  relationship: FriendRelationshipSchema,
+  canSendRequest: z.boolean(),
+});
+export type UserSearchResult = z.infer<typeof UserSearchResultSchema>;
+
+export const FriendRequestSchema = z.object({
+  id: z.string().uuid(),
+  user: PublicUserSchema,
+  createdAt: z.string().datetime(),
+});
+export type FriendRequest = z.infer<typeof FriendRequestSchema>;
+
+export const FriendSchema = z.object({
+  relationshipId: z.string().uuid(),
+  user: PublicUserSchema,
+  friendsSince: z.string().datetime(),
+});
+export type Friend = z.infer<typeof FriendSchema>;
+
+export const GameInvitationSchema = z.object({
+  gameId: z.string().uuid(),
+  host: PublicUserSchema,
+  invitee: PublicUserSchema,
+  turnSeconds: TurnSecondsSchema,
+  createdAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+});
+export type GameInvitation = z.infer<typeof GameInvitationSchema>;
+
+export const SocialSnapshotSchema = z.object({
+  friends: z.array(FriendSchema),
+  incomingFriendRequests: z.array(FriendRequestSchema),
+  outgoingFriendRequests: z.array(FriendRequestSchema),
+  incomingGameInvitations: z.array(GameInvitationSchema),
+  outgoingGameInvitations: z.array(GameInvitationSchema),
+  serverTime: z.string().datetime(),
+});
+export type SocialSnapshot = z.infer<typeof SocialSnapshotSchema>;
+
+export const AccountSubscribeCommandSchema = z.object({});
+export type AccountSubscribeCommand = z.infer<typeof AccountSubscribeCommandSchema>;
 
 export const GameListQuerySchema = z.object({
   status: z.enum(["active", "completed"]).default("active"),
@@ -130,6 +209,15 @@ export const ApiErrorCodeSchema = z.enum([
   "GAME_FULL",
   "GAME_FINISHED",
   "INVITE_EXPIRED",
+  "USER_NOT_FOUND",
+  "CANNOT_ADD_SELF",
+  "FRIEND_REQUEST_EXISTS",
+  "ALREADY_FRIENDS",
+  "RELATIONSHIP_CLOSED",
+  "FRIENDSHIP_REQUIRED",
+  "GAME_INVITE_EXISTS",
+  "GAME_RESERVED",
+  "INVITE_NOT_FOR_YOU",
   "NOT_YOUR_TURN",
   "COLUMN_FULL",
   "CLOCK_EXPIRED",
@@ -150,7 +238,7 @@ export interface GameListResponse {
 
 export interface CreateGameResponse {
   game: GameSnapshot;
-  inviteUrl: string;
+  inviteUrl: string | null;
 }
 
 export interface PresenceEvent {
@@ -166,6 +254,7 @@ export interface RematchCreatedEvent {
 type Ack<T> = (result: CommandResult<T>) => void;
 
 export interface ClientToServerEvents {
+  "account:subscribe": (command: AccountSubscribeCommand, ack: Ack<SocialSnapshot>) => void;
   "game:subscribe": (command: SubscribeCommand, ack: Ack<GameSnapshot>) => void;
   "game:move": (command: MoveCommand, ack: Ack<GameSnapshot>) => void;
   "game:resign": (command: ResignCommand, ack: Ack<GameSnapshot>) => void;
@@ -176,6 +265,7 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
+  "account:state": (state: SocialSnapshot) => void;
   "game:state": (game: GameSnapshot) => void;
   "game:presence": (presence: PresenceEvent) => void;
   "game:rematch-created": (event: RematchCreatedEvent) => void;

@@ -20,6 +20,8 @@ import { createGameRouter } from "./game-router";
 import { GameService } from "./game-service";
 import { createLogger } from "./logger";
 import { createMetrics } from "./metrics";
+import { createSocialRouter } from "./social-router";
+import { SocialService } from "./social-service";
 import { createGameSocket } from "./socket";
 
 const WORKER_CHANNEL = "four:game-updates";
@@ -35,9 +37,18 @@ await redis.connect();
 const sendEmail = createEmailSender(config, logger);
 const auth = createAuth(db, config, sendEmail);
 const games = new GameService(db);
+const social = new SocialService(db);
 const app = express();
 const httpServer = createServer(app);
-const sockets = await createGameSocket(httpServer, { auth, config, games, logger, metrics, redis });
+const sockets = await createGameSocket(httpServer, {
+  auth,
+  config,
+  games,
+  social,
+  logger,
+  metrics,
+  redis,
+});
 
 app.set("trust proxy", 1);
 app.use(
@@ -75,6 +86,21 @@ const authLimiter = rateLimit({
       error: { code: "RATE_LIMITED", message: "Too many account requests. Try again shortly." },
     }),
 });
+const socialLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new RedisStore({
+    sendCommand: (...args: string[]) => redis.sendCommand(args),
+    prefix: "rate:social:",
+  }),
+  handler: (_request, response) =>
+    response.status(429).json({
+      ok: false,
+      error: { code: "RATE_LIMITED", message: "Too many social requests. Try again shortly." },
+    }),
+});
 app.use("/api/auth", authLimiter);
 app.all("/api/auth/*splat", toNodeHandler(auth));
 
@@ -92,6 +118,10 @@ app.use((request, response, next) => {
   }
   next();
 });
+app.use(
+  ["/api/users/search", "/api/friend-requests", "/api/game-invitations", "/api/games"],
+  socialLimiter,
+);
 
 app.get("/health/live", (_request, response) => response.json({ status: "ok" }));
 app.get("/health/ready", async (_request, response) => {
@@ -108,20 +138,45 @@ app.get("/metrics", async (_request, response) => {
   response.type(metrics.registry.contentType).send(await metrics.registry.metrics());
 });
 
-app.use("/api", createGameRouter({ auth, config, games, broadcastGame: sockets.broadcastGame }));
+app.use(
+  "/api",
+  createGameRouter({
+    auth,
+    config,
+    games,
+    broadcastGame: sockets.broadcastGame,
+    broadcastAccount: sockets.broadcastAccount,
+  }),
+);
+app.use(
+  "/api",
+  createSocialRouter({
+    auth,
+    social,
+    broadcastGame: sockets.broadcastGame,
+    broadcastAccount: sockets.broadcastAccount,
+  }),
+);
 app.use(createErrorHandler(logger));
 
 const updateSubscriber = redis.duplicate();
 await updateSubscriber.connect();
 await updateSubscriber.subscribe(WORKER_CHANNEL, async (message) => {
   try {
-    const payload = JSON.parse(message) as { gameId: string; stateVersion: number };
+    const payload = JSON.parse(message) as {
+      gameId: string;
+      stateVersion: number;
+      affectedUserIds?: string[];
+    };
     const wonBroadcast = await redis.set(
       `broadcast:${payload.gameId}:${payload.stateVersion}`,
       "1",
       { NX: true, EX: 5 },
     );
-    if (wonBroadcast) await sockets.broadcastGame(payload.gameId);
+    if (wonBroadcast) {
+      await sockets.broadcastGame(payload.gameId);
+      await Promise.all((payload.affectedUserIds ?? []).map(sockets.broadcastAccount));
+    }
   } catch (error) {
     logger.error({ err: error }, "Unable to process a worker game update");
   }

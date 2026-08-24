@@ -1354,17 +1354,226 @@ a {
   gap: 1rem;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.nav-badge {
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding-inline: 0.3rem;
+  display: inline-grid !important;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  background: #d83e43;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.friends-page {
+  padding-block: clamp(2.5rem, 6vw, 5rem);
+}
+
+.social-heading {
+  max-width: 42rem;
+  margin-bottom: 2rem;
+}
+
+.friend-search-card {
+  padding: clamp(1.25rem, 3vw, 2rem);
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.65fr) minmax(18rem, 1fr);
+  gap: 1.5rem 2rem;
+  align-items: end;
+  border: 1px solid #dbe4ef;
+  border-radius: 1.2rem;
+  background: linear-gradient(145deg, #fff, #f5f9ff);
+  box-shadow: 0 12px 30px rgb(21 54 102 / 8%);
+}
+
+.friend-search-card h2 {
+  margin: 0;
+  color: #13294d;
+  font:
+    800 1.25rem "Manrope",
+    sans-serif;
+}
+
+.friend-search-card p {
+  margin: 0.4rem 0 0;
+  color: #657590;
+}
+
+.friend-search {
+  display: grid;
+  gap: 0.4rem;
+  color: #263b5c;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.friend-search > div {
+  display: flex;
+  gap: 0.65rem;
+}
+
+.friend-search input {
+  width: 100%;
+  min-height: 3.2rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #cfd8e6;
+  border-radius: 0.75rem;
+  color: #102448;
+  background: #fff;
+}
+
+.search-result {
+  grid-column: 1 / -1;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  border: 1px solid #cfe0f7;
+  border-radius: 0.9rem;
+  background: #edf5ff;
+}
+
+.search-result > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+  flex: 1;
+}
+
+.search-result small,
+.social-row small {
+  color: #667792;
+}
+
+.social-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.social-row {
+  min-height: 5.25rem;
+  padding: 0.9rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  border: 1px solid #dce5f0;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 8px 22px rgb(21 54 102 / 5%);
+}
+
+.social-avatar {
+  width: 2.8rem;
+  height: 2.8rem;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 4px solid #1d6bd2;
+  border-radius: 50%;
+  color: #0b4d9f;
+  background: #dcecff;
+  font-weight: 800;
+}
+
+.social-row__copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.22rem;
+  flex: 1;
+}
+
+.social-row__copy strong {
+  color: #173052;
+}
+
+.social-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.social-row .button {
+  min-height: 2.55rem;
+  padding: 0.6rem 0.9rem;
+}
+
+.button--ghost-dark {
+  border: 1px solid #d2dbea;
+  color: #445a79;
+  background: #fff;
+}
+
+.icon-button {
+  width: 2.65rem;
+  height: 2.65rem;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #536681;
+  background: #eef2f7;
+}
+
+.icon-button--danger:hover {
+  color: #9b292d;
+  background: #ffebeb;
+}
+
+.challenge-actions select {
+  min-height: 2.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #d2dbea;
+  border-radius: 0.65rem;
+  color: #243a5a;
+  background: #fff;
+}
+
+.invitation-alerts {
+  padding: 1.25rem;
+  border: 1px solid #bdd6f6;
+  border-radius: 1.2rem;
+  background: #eef6ff;
+}
+
+.invitation-alerts .section-title {
+  margin-bottom: 0.8rem;
+}
+
+.invitation-row--game .social-avatar {
+  border-color: #e3b600;
+  color: #715700;
+  background: #fff3b5;
+}
+
 @media (max-width: 850px) {
   .dashboard-heading {
     grid-template-columns: 1fr;
   }
   .create-panel {
     justify-self: start;
+    flex-wrap: wrap;
   }
   .active-grid {
     grid-template-columns: 1fr;
   }
   .account-grid {
+    grid-template-columns: 1fr;
+  }
+  .friend-search-card {
     grid-template-columns: 1fr;
   }
   .invite-hero {
@@ -1413,7 +1622,8 @@ a {
     display: none;
   }
   .dashboard-page,
-  .account-page {
+  .account-page,
+  .friends-page {
     padding-block: 2rem;
   }
   .dashboard-heading h1 {
@@ -1423,6 +1633,22 @@ a {
     width: 100%;
     display: grid;
     grid-template-columns: 1fr;
+  }
+  .social-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .social-row__actions {
+    width: 100%;
+    padding-left: 3.7rem;
+    flex-wrap: wrap;
+  }
+  .challenge-actions select {
+    flex: 1;
+  }
+  .friend-search > div {
+    align-items: stretch;
+    flex-direction: column;
   }
   .game-list-row {
     grid-template-columns: auto minmax(0, 1fr);

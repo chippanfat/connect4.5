@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import type {
+  GameInvitationSelection,
   GameListItem,
   GameListResponse,
   GameSnapshot,
@@ -10,7 +11,15 @@ import type {
   ResignCommand,
   TurnSeconds,
 } from "@four/contracts";
-import { gameMoves, games, rematchRequests, user, type Database, type GameRow } from "@four/db";
+import {
+  friendships,
+  gameMoves,
+  games,
+  rematchRequests,
+  user,
+  type Database,
+  type GameRow,
+} from "@four/db";
 import { applyMove, createBoard, isValidBoard, type DiscColor } from "@four/game-engine";
 import { and, count, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 
@@ -55,6 +64,7 @@ function listItem(game: GameSnapshot): GameListItem {
     turnDeadlineAt: game.turnDeadlineAt,
     inviteCode: game.inviteCode,
     inviteExpiresAt: game.inviteExpiresAt,
+    pendingInvitee: game.pendingInvitee,
     createdAt: game.createdAt,
     startedAt: game.startedAt,
     endedAt: game.endedAt,
@@ -77,6 +87,29 @@ export interface SettledTimeout {
   deadline: Date;
 }
 
+export interface ExpiredInvitation {
+  gameId: string;
+  stateVersion: number;
+  affectedUserIds: string[];
+}
+
+function canonicalPair(firstUserId: string, secondUserId: string) {
+  return firstUserId < secondUserId
+    ? { userAId: firstUserId, userBId: secondUserId }
+    : { userAId: secondUserId, userBId: firstUserId };
+}
+
+function isUniqueViolation(error: unknown, constraint: string) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23505" &&
+    "constraint" in error &&
+    error.constraint === constraint
+  );
+}
+
 export class GameService {
   constructor(private readonly db: Database) {}
 
@@ -88,19 +121,59 @@ export class GameService {
     return result?.value ?? 0;
   }
 
-  async createGame(hostUserId: string, turnSeconds: TurnSeconds): Promise<GameSnapshot> {
+  async createGame(
+    hostUserId: string,
+    turnSeconds: TurnSeconds,
+    invitation: GameInvitationSelection = { type: "link" },
+  ): Promise<GameSnapshot> {
     const now = new Date();
-    const [created] = await this.db
-      .insert(games)
-      .values({
-        seriesId: randomUUID(),
-        inviteCode: inviteCode(),
-        inviteExpiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
-        hostUserId,
-        board: createBoard(),
-        turnSeconds,
-      })
-      .returning({ id: games.id });
+    let created: { id: string } | undefined;
+    try {
+      created = await this.db.transaction(async (tx) => {
+        if (invitation.type === "friend") {
+          if (invitation.userId === hostUserId) {
+            throw new AppError("CANNOT_ADD_SELF", "Choose another friend to play against.");
+          }
+          const pair = canonicalPair(hostUserId, invitation.userId);
+          const [friendship] = await tx
+            .select({ status: friendships.status })
+            .from(friendships)
+            .where(
+              and(eq(friendships.userAId, pair.userAId), eq(friendships.userBId, pair.userBId)),
+            )
+            .limit(1)
+            .for("update");
+          if (friendship?.status !== "accepted") {
+            throw new AppError(
+              "FRIENDSHIP_REQUIRED",
+              "Become friends before sending a game invitation.",
+            );
+          }
+        }
+
+        const [result] = await tx
+          .insert(games)
+          .values({
+            seriesId: randomUUID(),
+            inviteCode: invitation.type === "link" ? inviteCode() : null,
+            invitedUserId: invitation.type === "friend" ? invitation.userId : null,
+            inviteExpiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+            hostUserId,
+            board: createBoard(),
+            turnSeconds,
+          })
+          .returning({ id: games.id });
+        return result;
+      });
+    } catch (error) {
+      if (isUniqueViolation(error, "games_pending_friend_pair_idx")) {
+        throw new AppError(
+          "GAME_INVITE_EXISTS",
+          "There is already an unanswered game invitation between you.",
+        );
+      }
+      throw error;
+    }
 
     if (!created) throw new AppError("INTERNAL_ERROR", "Unable to create the game.");
     return this.getSnapshot(created.id, hostUserId);
@@ -137,6 +210,10 @@ export class GameService {
         return { error: new AppError("GAME_NOT_FOUND", "This invite could not be found.") };
       if (game.hostUserId === guestUserId) {
         return { gameId: game.id };
+      }
+
+      if (game.invitedUserId) {
+        return { error: new AppError("GAME_RESERVED", "This game is reserved for a friend.") };
       }
 
       const now = new Date();
@@ -212,6 +289,131 @@ export class GameService {
     return this.getSnapshot(gameId, userId);
   }
 
+  async acceptGameInvitation(gameId: string, userId: string): Promise<GameSnapshot> {
+    const [candidate] = await this.db.select().from(games).where(eq(games.id, gameId)).limit(1);
+    if (!candidate) throw new AppError("GAME_NOT_FOUND", "This invitation could not be found.");
+    if (candidate.status === "active" && candidate.guestUserId === userId) {
+      return this.getSnapshot(candidate.id, userId);
+    }
+    if (candidate.invitedUserId !== userId) {
+      throw new AppError("INVITE_NOT_FOR_YOU", "This game invitation is for another player.");
+    }
+    const pair = canonicalPair(candidate.hostUserId, userId);
+    const outcome = await this.db.transaction(async (tx) => {
+      const [friendship] = await tx
+        .select({ status: friendships.status })
+        .from(friendships)
+        .where(and(eq(friendships.userAId, pair.userAId), eq(friendships.userBId, pair.userBId)))
+        .limit(1)
+        .for("update");
+      if (friendship?.status !== "accepted") {
+        throw new AppError(
+          "FRIENDSHIP_REQUIRED",
+          "You must still be friends to accept this invitation.",
+        );
+      }
+
+      const [game] = await tx
+        .select()
+        .from(games)
+        .where(eq(games.id, gameId))
+        .limit(1)
+        .for("update");
+      if (!game) throw new AppError("GAME_NOT_FOUND", "This invitation could not be found.");
+      if (game.status === "active" && game.guestUserId === userId) return { gameId: game.id };
+      if (game.invitedUserId !== userId) {
+        throw new AppError("INVITE_NOT_FOR_YOU", "This game invitation is for another player.");
+      }
+
+      const now = new Date();
+      if (game.status === "expired" || game.inviteExpiresAt <= now) {
+        if (game.status === "waiting") {
+          await tx
+            .update(games)
+            .set({
+              status: "expired",
+              endReason: "expired",
+              endedAt: now,
+              stateVersion: game.stateVersion + 1,
+            })
+            .where(eq(games.id, game.id));
+        }
+        return {
+          error: new AppError("INVITE_EXPIRED", "This invitation has expired."),
+          gameId: game.id,
+        };
+      }
+      if (game.status !== "waiting") {
+        throw new AppError("GAME_FINISHED", "This invitation can no longer be accepted.");
+      }
+
+      const hostStarts = (randomBytes(1)[0] ?? 0) % 2 === 0;
+      const redUserId = hostStarts ? game.hostUserId : userId;
+      const yellowUserId = hostStarts ? userId : game.hostUserId;
+      await tx
+        .update(games)
+        .set({
+          guestUserId: userId,
+          redUserId,
+          yellowUserId,
+          currentTurnUserId: redUserId,
+          status: "active",
+          startedAt: now,
+          turnDeadlineAt: new Date(now.getTime() + game.turnSeconds * 1000),
+          stateVersion: game.stateVersion + 1,
+        })
+        .where(eq(games.id, game.id));
+      return { gameId: game.id };
+    });
+    if (outcome.error) throw outcome.error;
+    return this.getSnapshot(outcome.gameId, userId);
+  }
+
+  async declineGameInvitation(gameId: string, userId: string): Promise<GameSnapshot> {
+    const outcome = await this.db.transaction(async (tx) => {
+      const [game] = await tx
+        .select()
+        .from(games)
+        .where(eq(games.id, gameId))
+        .limit(1)
+        .for("update");
+      if (!game) throw new AppError("GAME_NOT_FOUND", "This invitation could not be found.");
+      if (game.invitedUserId !== userId) {
+        throw new AppError("INVITE_NOT_FOR_YOU", "This game invitation is for another player.");
+      }
+      if (game.status === "cancelled" && game.endReason === "declined") return;
+      const now = new Date();
+      if (game.status === "expired" || game.inviteExpiresAt <= now) {
+        if (game.status === "waiting") {
+          await tx
+            .update(games)
+            .set({
+              status: "expired",
+              endReason: "expired",
+              endedAt: now,
+              stateVersion: game.stateVersion + 1,
+            })
+            .where(eq(games.id, game.id));
+        }
+        return new AppError("INVITE_EXPIRED", "This invitation has expired.");
+      }
+      if (game.status !== "waiting") {
+        throw new AppError("GAME_FINISHED", "This invitation can no longer be declined.");
+      }
+      await tx
+        .update(games)
+        .set({
+          status: "cancelled",
+          endReason: "declined",
+          endedAt: now,
+          stateVersion: game.stateVersion + 1,
+        })
+        .where(eq(games.id, game.id));
+    });
+    if (outcome instanceof AppError) throw outcome;
+    return this.getSnapshot(gameId, null);
+  }
+
   async getSnapshot(gameId: string, requestingUserId: string | null): Promise<GameSnapshot> {
     const [game] = await this.db.select().from(games).where(eq(games.id, gameId)).limit(1);
     if (!game) throw new AppError("GAME_NOT_FOUND", "This game could not be found.");
@@ -219,8 +421,8 @@ export class GameService {
       throw new AppError("FORBIDDEN", "You are not a player in this game.");
     }
 
-    const userIds = [game.hostUserId, game.guestUserId].filter((value): value is string =>
-      Boolean(value),
+    const userIds = [...new Set([game.hostUserId, game.guestUserId, game.invitedUserId])].filter(
+      (value): value is string => Boolean(value),
     );
     const [players, requests, recentMoves] = await Promise.all([
       this.db.select().from(user).where(inArray(user.id, userIds)),
@@ -236,7 +438,10 @@ export class GameService {
         .limit(1),
     ]);
     const usersById = new Map(players.map((player) => [player.id, player]));
-    const publicPlayers = userIds.map((userId) => {
+    const participantIds = [game.hostUserId, game.guestUserId].filter((value): value is string =>
+      Boolean(value),
+    );
+    const publicPlayers = participantIds.map((userId) => {
       const player = usersById.get(userId);
       if (!player) throw new AppError("INTERNAL_ERROR", "A game player could not be loaded.");
       return {
@@ -266,6 +471,16 @@ export class GameService {
       turnDeadlineAt: iso(game.turnDeadlineAt),
       inviteCode: game.status === "waiting" ? game.inviteCode : null,
       inviteExpiresAt: game.status === "waiting" ? game.inviteExpiresAt.toISOString() : null,
+      pendingInvitee: game.invitedUserId
+        ? {
+            userId: game.invitedUserId,
+            username:
+              usersById.get(game.invitedUserId)?.displayUsername ??
+              usersById.get(game.invitedUserId)?.username ??
+              usersById.get(game.invitedUserId)?.name ??
+              "Player",
+          }
+        : null,
       rematchRequestedBy: requests.map((request) => request.userId),
       seriesId: game.seriesId,
       rematchOfId: game.rematchOfId,
@@ -573,7 +788,7 @@ export class GameService {
     });
   }
 
-  async expireWaitingGames(limit = 50): Promise<Array<Omit<SettledTimeout, "deadline">>> {
+  async expireWaitingGames(limit = 50): Promise<ExpiredInvitation[]> {
     return this.db.transaction(async (tx) => {
       const now = new Date();
       const expired = await tx
@@ -596,6 +811,9 @@ export class GameService {
       return expired.map((game) => ({
         gameId: game.id,
         stateVersion: game.stateVersion + 1,
+        affectedUserIds: [game.hostUserId, game.invitedUserId].filter((value): value is string =>
+          Boolean(value),
+        ),
       }));
     });
   }

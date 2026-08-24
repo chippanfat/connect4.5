@@ -12,6 +12,7 @@ import {
 } from "./pages/AuthPages";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GamePage } from "./pages/GamePage";
+import { FriendsPage } from "./pages/FriendsPage";
 import { InvitePage } from "./pages/InvitePage";
 import { LandingPage } from "./pages/LandingPage";
 
@@ -41,6 +42,14 @@ export function App() {
         element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/friends"
+        element={
+          <ProtectedRoute>
+            <FriendsPage />
           </ProtectedRoute>
         }
       />

@@ -1,6 +1,6 @@
 # Four in a Row
 
-A responsive, private, real-time Four-in-a-Row game for mobile and desktop browsers. Two verified players share an invitation, play against a server-authoritative clock, reconnect safely, and can agree to a rematch.
+A responsive, private, real-time Four-in-a-Row game for mobile and desktop browsers. Verified players can connect by exact username and exchange persistent in-app game invitations, or keep using private invite links. Games use a server-authoritative clock, reconnect safely, and support mutual rematches.
 
 ## Architecture
 
@@ -10,7 +10,7 @@ A responsive, private, real-time Four-in-a-Row game for mobile and desktop brows
 - `packages/contracts` — Zod schemas and shared REST/socket types.
 - `packages/db` — Drizzle schema and PostgreSQL migrations.
 
-PostgreSQL is authoritative for every move. Redis Streams coordinates Socket.IO instances and connection recovery. A separate worker settles expired clocks with locked, idempotent database transactions.
+PostgreSQL is authoritative for friendships, invitations, and every move. Redis Streams coordinates game and account Socket.IO namespaces across instances and supports connection recovery. A separate worker settles expired clocks and invitations with locked, idempotent database transactions.
 
 ## Local development
 
@@ -32,7 +32,7 @@ If PostgreSQL or Redis already uses the default host port, override only the hos
 - `corepack pnpm lint` and `corepack pnpm format:check` — source quality.
 - `corepack pnpm build` — production builds.
 - `corepack pnpm test:e2e` — Chromium, Firefox, WebKit, and mobile viewport checks. Set `RUN_FULL_E2E=1` with local infrastructure running to include the two-account Mailpit-backed game flow.
-- `corepack pnpm --filter @four/web test:multi-node` — a two-client, two-API Redis Streams smoke test. Start replicas on ports 4000 and 4001 and provide `TEST_HOST_EMAIL` and `TEST_GUEST_EMAIL` for verified disposable accounts.
+- `corepack pnpm --filter @four/web test:multi-node` — a two-client, two-API Redis Streams smoke test covering game and account broadcasts. Start replicas on ports 4000 and 4001 and provide `TEST_HOST_EMAIL` and `TEST_GUEST_EMAIL` for verified disposable accounts.
 
 The API publishes live/readiness checks at `/health/live` and `/health/ready` and Prometheus metrics at `/metrics`. The worker exposes the same paths on `WORKER_METRICS_PORT` (9091 by default), including timeout-lag and active-game gauges.
 

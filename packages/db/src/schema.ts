@@ -113,8 +113,47 @@ export const gameEndReasonEnum = pgEnum("game_end_reason", [
   "resignation",
   "timeout",
   "cancelled",
+  "declined",
   "expired",
 ]);
+
+export const friendshipStatusEnum = pgEnum("friendship_status", ["pending", "accepted", "closed"]);
+
+export const friendships = pgTable(
+  "friendships",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userAId: text("user_a_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    userBId: text("user_b_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    status: friendshipStatusEnum("status").default("pending").notNull(),
+    requestedByUserId: text("requested_by_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    closedByUserId: text("closed_by_user_id").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    unique("friendships_pair_unique").on(table.userAId, table.userBId),
+    index("friendships_user_a_idx").on(table.userAId, table.status),
+    index("friendships_user_b_idx").on(table.userBId, table.status),
+    check("friendships_pair_order_check", sql`${table.userAId} < ${table.userBId}`),
+    check(
+      "friendships_requester_member_check",
+      sql`${table.requestedByUserId} in (${table.userAId}, ${table.userBId})`,
+    ),
+    check(
+      "friendships_closer_member_check",
+      sql`${table.closedByUserId} is null or ${table.closedByUserId} in (${table.userAId}, ${table.userBId})`,
+    ),
+  ],
+);
 
 export const games = pgTable(
   "games",
@@ -124,7 +163,7 @@ export const games = pgTable(
     rematchOfId: uuid("rematch_of_id").references((): AnyPgColumn => games.id, {
       onDelete: "set null",
     }),
-    inviteCode: varchar("invite_code", { length: 32 }).notNull(),
+    inviteCode: varchar("invite_code", { length: 32 }),
     inviteExpiresAt: timestamp("invite_expires_at", { withTimezone: true }).notNull(),
     status: gameStatusEnum("status").default("waiting").notNull(),
     endReason: gameEndReasonEnum("end_reason"),
@@ -132,6 +171,7 @@ export const games = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "restrict" }),
     guestUserId: text("guest_user_id").references(() => user.id, { onDelete: "restrict" }),
+    invitedUserId: text("invited_user_id").references(() => user.id, { onDelete: "restrict" }),
     redUserId: text("red_user_id").references(() => user.id, { onDelete: "restrict" }),
     yellowUserId: text("yellow_user_id").references(() => user.id, { onDelete: "restrict" }),
     currentTurnUserId: text("current_turn_user_id").references(() => user.id, {
@@ -157,12 +197,27 @@ export const games = pgTable(
     index("games_active_deadline_idx").on(table.status, table.turnDeadlineAt),
     index("games_host_history_idx").on(table.hostUserId, table.createdAt),
     index("games_guest_history_idx").on(table.guestUserId, table.createdAt),
+    index("games_invited_user_idx").on(table.invitedUserId, table.status, table.createdAt),
+    uniqueIndex("games_pending_friend_pair_idx")
+      .on(
+        sql`least(${table.hostUserId}, ${table.invitedUserId})`,
+        sql`greatest(${table.hostUserId}, ${table.invitedUserId})`,
+      )
+      .where(sql`${table.status} = 'waiting' and ${table.invitedUserId} is not null`),
     index("games_series_idx").on(table.seriesId, table.createdAt),
     check("games_turn_seconds_check", sql`${table.turnSeconds} in (30, 60, 120)`),
     check("games_move_count_check", sql`${table.moveCount} between 0 and 42`),
     check(
       "games_players_distinct_check",
       sql`${table.guestUserId} is null or ${table.guestUserId} <> ${table.hostUserId}`,
+    ),
+    check(
+      "games_invited_user_distinct_check",
+      sql`${table.invitedUserId} is null or ${table.invitedUserId} <> ${table.hostUserId}`,
+    ),
+    check(
+      "games_invitation_kind_check",
+      sql`(${table.invitedUserId} is null and ${table.inviteCode} is not null) or (${table.invitedUserId} is not null and ${table.inviteCode} is null)`,
     ),
   ],
 );
@@ -215,6 +270,21 @@ export const rematchRequests = pgTable(
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  friendshipsAsA: many(friendships, { relationName: "friendshipUserA" }),
+  friendshipsAsB: many(friendships, { relationName: "friendshipUserB" }),
+}));
+
+export const friendshipRelations = relations(friendships, ({ one }) => ({
+  userA: one(user, {
+    fields: [friendships.userAId],
+    references: [user.id],
+    relationName: "friendshipUserA",
+  }),
+  userB: one(user, {
+    fields: [friendships.userBId],
+    references: [user.id],
+    relationName: "friendshipUserB",
+  }),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -257,12 +327,14 @@ export const schema = {
   session,
   account,
   verification,
+  friendships,
   games,
   gameMoves,
   rematchRequests,
   userRelations,
   sessionRelations,
   accountRelations,
+  friendshipRelations,
   gameRelations,
   moveRelations,
   rematchRequestRelations,

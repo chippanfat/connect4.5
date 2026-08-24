@@ -1,7 +1,9 @@
-import { CircleUserRound, Gamepad2, LogOut } from "lucide-react";
+import { CircleUserRound, Gamepad2, LogOut, UsersRound } from "lucide-react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 
 import { authClient } from "./auth-client";
+import { SocialProvider } from "./social";
+import { useSocial } from "./social-context";
 
 export function Logo() {
   return (
@@ -27,8 +29,19 @@ export function PageLoader({ label = "Loading" }: { label?: string }) {
 }
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SocialProvider>
+      <AppLayoutContent>{children}</AppLayoutContent>
+    </SocialProvider>
+  );
+}
+
+function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const { data: session } = authClient.useSession();
+  const { social } = useSocial();
+  const notificationCount =
+    (social?.incomingFriendRequests.length ?? 0) + (social?.incomingGameInvitations.length ?? 0);
   async function signOut() {
     await authClient.signOut();
     navigate("/");
@@ -41,6 +54,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <NavLink to="/dashboard">
             <Gamepad2 size={18} aria-hidden="true" />
             <span>Games</span>
+          </NavLink>
+          <NavLink to="/friends">
+            <UsersRound size={18} aria-hidden="true" />
+            <span>Friends</span>
+            {notificationCount > 0 && (
+              <span className="nav-badge" aria-label={`${notificationCount} invitations`}>
+                {notificationCount > 9 ? "9+" : notificationCount}
+              </span>
+            )}
           </NavLink>
           <NavLink to="/account">
             <CircleUserRound size={18} aria-hidden="true" />
