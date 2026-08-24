@@ -1,4 +1,8 @@
-import { CreateGameInputSchema, GameListQuerySchema } from "@four/contracts";
+import {
+  CreateGameInputSchema,
+  GameListQuerySchema,
+  type GameInvitationNotificationEvent,
+} from "@four/contracts";
 import { Router } from "express";
 import { z } from "zod";
 
@@ -17,6 +21,7 @@ interface RouterDependencies {
   games: GameService;
   broadcastGame: (gameId: string) => Promise<void>;
   broadcastAccount: (userId: string) => Promise<void>;
+  notifyGameInvitation: (inviteeUserId: string, event: GameInvitationNotificationEvent) => void;
 }
 
 export function createGameRouter({
@@ -25,6 +30,7 @@ export function createGameRouter({
   games,
   broadcastGame,
   broadcastAccount,
+  notifyGameInvitation,
 }: RouterDependencies) {
   const router = Router();
 
@@ -51,6 +57,14 @@ export function createGameRouter({
     const game = await games.createGame(userId, input.turnSeconds, input.invitation);
     if (game.pendingInvitee) {
       await Promise.all([broadcastAccount(userId), broadcastAccount(game.pendingInvitee.userId)]);
+      const host = game.players.find((player) => player.userId === game.hostUserId);
+      if (host) {
+        notifyGameInvitation(game.pendingInvitee.userId, {
+          gameId: game.id,
+          host: { userId: host.userId, username: host.username },
+          turnSeconds: game.turnSeconds,
+        });
+      }
     }
     response.status(201).json({
       ok: true,

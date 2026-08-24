@@ -1,12 +1,15 @@
 import type { ClientToServerEvents, ServerToClientEvents, SocialSnapshot } from "@four/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 
 import { api } from "./api";
+import { showGameInvitationNotification } from "./browser-notifications";
 import { SocialContext } from "./social-context";
 
 export function SocialProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["social"],
@@ -28,10 +31,16 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       });
     });
     socket.on("account:state", replaceState);
+    socket.on("account:game-invitation", (invitation) => {
+      showGameInvitationNotification(invitation, () => {
+        window.focus();
+        navigate("/dashboard");
+      });
+    });
     return () => {
       socket.disconnect();
     };
-  }, [queryClient]);
+  }, [navigate, queryClient]);
 
   return (
     <SocialContext.Provider

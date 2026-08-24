@@ -1,6 +1,12 @@
-import { type FormEvent, useState } from "react";
+import { BellRing } from "lucide-react";
+import { type FormEvent, useEffect, useState } from "react";
 
 import { authClient } from "../auth-client";
+import {
+  getBrowserNotificationPermission,
+  requestBrowserNotificationPermission,
+  type BrowserNotificationPermission,
+} from "../browser-notifications";
 import { Alert } from "../components";
 
 export function AccountPage() {
@@ -9,6 +15,19 @@ export function AccountPage() {
   const [newPassword, setNewPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notificationPermission, setNotificationPermission] =
+    useState<BrowserNotificationPermission>(getBrowserNotificationPermission);
+
+  useEffect(() => {
+    const refreshPermission = () => setNotificationPermission(getBrowserNotificationPermission());
+    window.addEventListener("focus", refreshPermission);
+    return () => window.removeEventListener("focus", refreshPermission);
+  }, []);
+
+  async function enableBrowserNotifications() {
+    setNotificationPermission(await requestBrowserNotificationPermission());
+  }
+
   async function changePassword(event: FormEvent) {
     event.preventDefault();
     setError(null);
@@ -78,6 +97,34 @@ export function AccountPage() {
             </label>
             <button className="button button--soft">Update password</button>
           </form>
+        </section>
+        <section className="settings-card settings-card--wide">
+          <div className="notification-setting">
+            <span className="notification-setting__icon" aria-hidden="true">
+              <BellRing />
+            </span>
+            <div>
+              <h2>Browser notifications</h2>
+              <p>
+                {notificationPermission === "granted"
+                  ? "Enabled. You’ll be notified when a friend invites you to a new game."
+                  : notificationPermission === "denied"
+                    ? "Blocked by your browser. Allow notifications for this site in your browser settings."
+                    : notificationPermission === "unsupported"
+                      ? "Notifications are not supported by this browser."
+                      : "Get an alert when a friend invites you to a new game."}
+              </p>
+            </div>
+            {notificationPermission === "default" && (
+              <button
+                className="button button--soft"
+                type="button"
+                onClick={() => void enableBrowserNotifications()}
+              >
+                Enable notifications
+              </button>
+            )}
+          </div>
         </section>
       </div>
     </main>

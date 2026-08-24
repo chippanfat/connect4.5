@@ -122,6 +122,22 @@ test("friends can exchange and accept a persistent dashboard game invitation", a
   const guestContext = await browser.newContext();
   const host = await hostContext.newPage();
   const guest = await guestContext.newPage();
+  await guest.addInitScript(() => {
+    const notifications: Array<{ title: string; body: string | undefined }> = [];
+    Object.defineProperty(window, "__gameInviteNotifications", { value: notifications });
+    class TestNotification {
+      static permission = "granted";
+      onclick: (() => void) | null = null;
+      constructor(title: string, options?: NotificationOptions) {
+        notifications.push({ title, body: options?.body });
+      }
+      close() {}
+    }
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: TestNotification,
+    });
+  });
   await signUpAndVerify(host, request, hostUsername, `fhost-${suffix}@example.test`);
   await signUpAndVerify(guest, request, guestUsername, `fguest-${suffix}@example.test`);
 
@@ -143,6 +159,21 @@ test("friends can exchange and accept a persistent dashboard game invitation", a
   await expect(host.getByText(`Waiting for ${guestUsername} to accept`).first()).toBeVisible();
 
   await expect(guest.getByText(`${hostUsername} invited you to play`)).toBeVisible();
+  await expect
+    .poll(() =>
+      guest.evaluate(
+        () =>
+          (
+            window as Window & {
+              __gameInviteNotifications: Array<{ title: string; body: string | undefined }>;
+            }
+          ).__gameInviteNotifications,
+      ),
+    )
+    .toContainEqual({
+      title: `${hostUsername} invited you to play`,
+      body: "Open Four in a Row to answer their 60-second game invitation.",
+    });
   await guest.reload();
   await guest.getByRole("button", { name: "Play" }).click();
   await expect(guest).toHaveURL(/\/game\//);

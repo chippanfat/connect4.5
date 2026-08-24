@@ -146,6 +146,7 @@ app.use(
     games,
     broadcastGame: sockets.broadcastGame,
     broadcastAccount: sockets.broadcastAccount,
+    notifyGameInvitation: sockets.notifyGameInvitation,
   }),
 );
 app.use(

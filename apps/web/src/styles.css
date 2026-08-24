@@ -1028,6 +1028,37 @@ a {
   overflow-wrap: anywhere;
 }
 
+.settings-card--wide {
+  grid-column: 1 / -1;
+}
+
+.notification-setting {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1rem;
+}
+
+.notification-setting__icon {
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #0f60ca;
+  background: #eaf3ff;
+}
+
+.notification-setting h2 {
+  margin-bottom: 0.35rem;
+}
+
+.notification-setting p {
+  margin: 0;
+  color: #687991;
+  line-height: 1.5;
+}
+
 .live-game-page {
   min-height: calc(100dvh - 4.75rem);
   padding: 1.25rem 0 max(2rem, env(safe-area-inset-bottom));
@@ -1572,6 +1603,13 @@ a {
   }
   .account-grid {
     grid-template-columns: 1fr;
+  }
+  .notification-setting {
+    grid-template-columns: auto 1fr;
+  }
+  .notification-setting .button {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
   .friend-search-card {
     grid-template-columns: 1fr;

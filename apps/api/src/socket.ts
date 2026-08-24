@@ -1,5 +1,6 @@
 import type {
   ClientToServerEvents,
+  GameInvitationNotificationEvent,
   InterServerEvents,
   ServerToClientEvents,
   SocketData,
@@ -80,6 +81,10 @@ export async function createGameSocket(httpServer: HttpServer, dependencies: Soc
     } catch (error) {
       logger.error({ err: error, userId }, "Unable to broadcast account state");
     }
+  };
+
+  const notifyGameInvitation = (inviteeUserId: string, event: GameInvitationNotificationEvent) => {
+    accountNamespace.to(accountRoomName(inviteeUserId)).emit("account:game-invitation", event);
   };
 
   const enforceCommandRate = async (userId: string) => {
@@ -234,6 +239,7 @@ export async function createGameSocket(httpServer: HttpServer, dependencies: Soc
     io,
     broadcastGame,
     broadcastAccount,
+    notifyGameInvitation,
     close: async () => {
       await new Promise<void>((resolve) => io.close(() => resolve()));
       await adapterRedis.quit();
