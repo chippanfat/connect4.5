@@ -1,0 +1,33 @@
+{$CADDY_SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		-Server
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+
+	@api path /api /api/*
+	handle @api {
+		reverse_proxy {$FOUR_API_UPSTREAMS:api:4000} {
+			lb_policy cookie four_backend
+		}
+	}
+
+	@socket path /socket.io /socket.io/*
+	handle @socket {
+		reverse_proxy {$FOUR_API_UPSTREAMS:api:4000} {
+			lb_policy cookie four_backend
+		}
+	}
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

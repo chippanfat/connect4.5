@@ -1,0 +1,11 @@
+Hi {{username}},
+
+Welcome to {{product_name}}. Verify your email address to finish creating your account:
+
+{{verification_url}}
+
+This link expires in {{expires_in}}. If you did not create this account, you can safely ignore this email.
+
+Need help? Email {{support_email}}.
+
+© {{current_year}} {{product_name}}

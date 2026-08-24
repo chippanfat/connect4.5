@@ -1,0 +1,8 @@
+[Unit]
+Description=Back up the Four in a Row PostgreSQL database
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /opt/four-in-a-row/infra/backup-postgres.sh

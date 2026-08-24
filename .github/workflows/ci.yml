@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-alpine3.21
+        env:
+          POSTGRES_DB: four_test
+          POSTGRES_USER: four
+          POSTGRES_PASSWORD: four
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U four -d four_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7.4.5-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      mailpit:
+        image: axllent/mailpit:v1.27.8
+        ports:
+          - 1025:1025
+          - 8025:8025
+    env:
+      NODE_ENV: test
+      APP_ORIGIN: http://localhost:5173
+      DATABASE_URL: postgresql://four:four@localhost:5432/four_test
+      TEST_DATABASE_URL: postgresql://four:four@localhost:5432/four_test
+      REDIS_URL: redis://localhost:6379
+      AUTH_RATE_LIMIT: 200
+      BETTER_AUTH_SECRET: ci-only-secret-with-at-least-32-characters
+      SMTP_HOST: localhost
+      SMTP_PORT: 1025
+      RUN_FULL_E2E: 1
+      CI: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - run: corepack prepare pnpm@11.22.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @four/db db:migrate
+      - run: pnpm --filter @four/db db:check
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - run: pnpm test:e2e
