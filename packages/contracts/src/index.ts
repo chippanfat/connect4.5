@@ -257,6 +257,11 @@ export interface GameInvitationNotificationEvent {
   turnSeconds: TurnSeconds;
 }
 
+export interface RematchRequestedNotificationEvent {
+  gameId: string;
+  requestedBy: PublicUser;
+}
+
 type Ack<T> = (result: CommandResult<T>) => void;
 
 export interface ClientToServerEvents {
@@ -273,6 +278,7 @@ export interface ClientToServerEvents {
 export interface ServerToClientEvents {
   "account:state": (state: SocialSnapshot) => void;
   "account:game-invitation": (event: GameInvitationNotificationEvent) => void;
+  "account:rematch-requested": (event: RematchRequestedNotificationEvent) => void;
   "game:state": (game: GameSnapshot) => void;
   "game:presence": (presence: PresenceEvent) => void;
   "game:rematch-created": (event: RematchCreatedEvent) => void;

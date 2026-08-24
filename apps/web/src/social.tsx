@@ -5,7 +5,10 @@ import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 
 import { api } from "./api";
-import { showGameInvitationNotification } from "./browser-notifications";
+import {
+  showGameInvitationNotification,
+  showRematchRequestedNotification,
+} from "./browser-notifications";
 import { SocialContext } from "./social-context";
 
 export function SocialProvider({ children }: { children: ReactNode }) {
@@ -35,6 +38,12 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       showGameInvitationNotification(invitation, () => {
         window.focus();
         navigate("/dashboard");
+      });
+    });
+    socket.on("account:rematch-requested", (request) => {
+      showRematchRequestedNotification(request, () => {
+        window.focus();
+        navigate(`/game/${request.gameId}`);
       });
     });
     return () => {

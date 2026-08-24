@@ -52,6 +52,38 @@ async function playColumn(page: Page, column: number) {
   await expect(page.getByText(/Your turn|is thinking|You won|won$/).first()).toBeVisible();
 }
 
+type RecordedNotification = { title: string; body: string | undefined };
+
+async function recordBrowserNotifications(page: Page) {
+  await page.addInitScript(() => {
+    const notifications: RecordedNotification[] = [];
+    Object.defineProperty(window, "__browserNotifications", { value: notifications });
+    class TestNotification {
+      static permission = "granted";
+      onclick: (() => void) | null = null;
+      constructor(title: string, options?: NotificationOptions) {
+        notifications.push({ title, body: options?.body });
+      }
+      close() {}
+    }
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: TestNotification,
+    });
+  });
+}
+
+function readBrowserNotifications(page: Page) {
+  return page.evaluate(
+    () =>
+      (
+        window as Window & {
+          __browserNotifications: RecordedNotification[];
+        }
+      ).__browserNotifications,
+  );
+}
+
 test("two verified players can finish a private game and start a rematch", async ({
   browser,
   request,
@@ -62,8 +94,12 @@ test("two verified players can finish a private game and start a rematch", async
   const guestContext: BrowserContext = await browser.newContext();
   const host = await hostContext.newPage();
   const guest = await guestContext.newPage();
-  await signUpAndVerify(host, request, `host_${suffix}`, `host-${suffix}@example.test`);
-  await signUpAndVerify(guest, request, `guest_${suffix}`, `guest-${suffix}@example.test`);
+  await recordBrowserNotifications(host);
+  await recordBrowserNotifications(guest);
+  const hostUsername = `host_${suffix}`;
+  const guestUsername = `guest_${suffix}`;
+  await signUpAndVerify(host, request, hostUsername, `host-${suffix}@example.test`);
+  await signUpAndVerify(guest, request, guestUsername, `guest-${suffix}@example.test`);
 
   await host.goto("/dashboard");
   const responsePromise = host.waitForResponse(
@@ -86,6 +122,7 @@ test("two verified players can finish a private game and start a rematch", async
   const hostIsRed = (await host.locator(".player-panel--left .avatar-disc--red").count()) === 1;
   const red = hostIsRed ? host : guest;
   const yellow = hostIsRed ? guest : host;
+  const redUsername = hostIsRed ? hostUsername : guestUsername;
   const firstColumn = red.getByRole("button", { name: /Drop a disc in column 1/ });
   await firstColumn.focus();
   await red.keyboard.press("Enter");
@@ -101,6 +138,16 @@ test("two verified players can finish a private game and start a rematch", async
   const previousRedUrl = red.url();
   const previousYellowUrl = yellow.url();
   await red.getByRole("button", { name: "Request rematch" }).click();
+  await expect
+    .poll(() => readBrowserNotifications(yellow))
+    .toContainEqual({
+      title: `${redUsername} requested a rematch`,
+      body: "Open Four in a Row to play them again.",
+    });
+  expect(await readBrowserNotifications(red)).not.toContainEqual({
+    title: `${redUsername} requested a rematch`,
+    body: "Open Four in a Row to play them again.",
+  });
   await yellow.getByRole("button", { name: "Request rematch" }).click();
   await expect.poll(() => red.url()).not.toBe(previousRedUrl);
   await expect.poll(() => yellow.url()).not.toBe(previousYellowUrl);
@@ -122,22 +169,7 @@ test("friends can exchange and accept a persistent dashboard game invitation", a
   const guestContext = await browser.newContext();
   const host = await hostContext.newPage();
   const guest = await guestContext.newPage();
-  await guest.addInitScript(() => {
-    const notifications: Array<{ title: string; body: string | undefined }> = [];
-    Object.defineProperty(window, "__gameInviteNotifications", { value: notifications });
-    class TestNotification {
-      static permission = "granted";
-      onclick: (() => void) | null = null;
-      constructor(title: string, options?: NotificationOptions) {
-        notifications.push({ title, body: options?.body });
-      }
-      close() {}
-    }
-    Object.defineProperty(window, "Notification", {
-      configurable: true,
-      value: TestNotification,
-    });
-  });
+  await recordBrowserNotifications(guest);
   await signUpAndVerify(host, request, hostUsername, `fhost-${suffix}@example.test`);
   await signUpAndVerify(guest, request, guestUsername, `fguest-${suffix}@example.test`);
 
@@ -160,16 +192,7 @@ test("friends can exchange and accept a persistent dashboard game invitation", a
 
   await expect(guest.getByText(`${hostUsername} invited you to play`)).toBeVisible();
   await expect
-    .poll(() =>
-      guest.evaluate(
-        () =>
-          (
-            window as Window & {
-              __gameInviteNotifications: Array<{ title: string; body: string | undefined }>;
-            }
-          ).__gameInviteNotifications,
-      ),
-    )
+    .poll(() => readBrowserNotifications(guest))
     .toContainEqual({
       title: `${hostUsername} invited you to play`,
       body: "Open Four in a Row to answer their 60-second game invitation.",

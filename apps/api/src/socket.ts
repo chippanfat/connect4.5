@@ -204,6 +204,25 @@ export async function createGameSocket(httpServer: HttpServer, dependencies: Soc
         const command = RematchCommandSchema.parse(raw);
         const result = await games.requestRematch(socket.data.userId, command);
         gameNamespace.to(roomName(result.game.id)).emit("game:state", result.game);
+        if (result.changed && command.requested && !result.nextGame) {
+          const requestedBy = result.game.players.find(
+            (player) => player.userId === socket.data.userId,
+          );
+          const opponent = result.game.players.find(
+            (player) => player.userId !== socket.data.userId,
+          );
+          if (requestedBy && opponent) {
+            accountNamespace
+              .to(accountRoomName(opponent.userId))
+              .emit("account:rematch-requested", {
+                gameId: result.game.id,
+                requestedBy: {
+                  userId: requestedBy.userId,
+                  username: requestedBy.username,
+                },
+              });
+          }
+        }
         if (result.nextGame) {
           gameNamespace.to(roomName(result.game.id)).emit("game:rematch-created", {
             previousGameId: result.game.id,

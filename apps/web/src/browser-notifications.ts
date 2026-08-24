@@ -1,4 +1,7 @@
-import type { GameInvitationNotificationEvent } from "@four/contracts";
+import type {
+  GameInvitationNotificationEvent,
+  RematchRequestedNotificationEvent,
+} from "@four/contracts";
 
 export type BrowserNotificationPermission = NotificationPermission | "unsupported";
 
@@ -20,8 +23,9 @@ export async function requestBrowserNotificationPermission(): Promise<BrowserNot
   }
 }
 
-export function showGameInvitationNotification(
-  invitation: GameInvitationNotificationEvent,
+function showBrowserNotification(
+  title: string,
+  options: NotificationOptions,
   onClick: () => void,
 ): Notification | null {
   const api = notificationApi();
@@ -29,10 +33,7 @@ export function showGameInvitationNotification(
 
   let notification: Notification;
   try {
-    notification = new api(`${invitation.host.username} invited you to play`, {
-      body: `Open Four in a Row to answer their ${invitation.turnSeconds}-second game invitation.`,
-      tag: `game-invitation:${invitation.gameId}`,
-    });
+    notification = new api(title, options);
   } catch {
     return null;
   }
@@ -41,4 +42,32 @@ export function showGameInvitationNotification(
     onClick();
   };
   return notification;
+}
+
+export function showGameInvitationNotification(
+  invitation: GameInvitationNotificationEvent,
+  onClick: () => void,
+): Notification | null {
+  return showBrowserNotification(
+    `${invitation.host.username} invited you to play`,
+    {
+      body: `Open Four in a Row to answer their ${invitation.turnSeconds}-second game invitation.`,
+      tag: `game-invitation:${invitation.gameId}`,
+    },
+    onClick,
+  );
+}
+
+export function showRematchRequestedNotification(
+  request: RematchRequestedNotificationEvent,
+  onClick: () => void,
+): Notification | null {
+  return showBrowserNotification(
+    `${request.requestedBy.username} requested a rematch`,
+    {
+      body: "Open Four in a Row to play them again.",
+      tag: `rematch-request:${request.gameId}`,
+    },
+    onClick,
+  );
 }

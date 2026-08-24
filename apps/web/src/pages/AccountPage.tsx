@@ -107,12 +107,12 @@ export function AccountPage() {
               <h2>Browser notifications</h2>
               <p>
                 {notificationPermission === "granted"
-                  ? "Enabled. You’ll be notified when a friend invites you to a new game."
+                  ? "Enabled. You’ll be notified about new game invitations and rematch requests."
                   : notificationPermission === "denied"
                     ? "Blocked by your browser. Allow notifications for this site in your browser settings."
                     : notificationPermission === "unsupported"
                       ? "Notifications are not supported by this browser."
-                      : "Get an alert when a friend invites you to a new game."}
+                      : "Get alerts for new game invitations and rematch requests."}
               </p>
             </div>
             {notificationPermission === "default" && (
