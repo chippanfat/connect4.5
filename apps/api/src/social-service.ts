@@ -45,6 +45,11 @@ function isUniqueViolation(error: unknown, constraint: string) {
 export interface SocialMutationResult {
   affectedUserIds: string[];
   cancelledGameIds: string[];
+  friendRequestEmail?: {
+    to: string;
+    recipientUsername: string;
+    requesterUsername: string;
+  };
 }
 
 export class SocialService {
@@ -178,13 +183,32 @@ export class SocialService {
     rawUsername: string,
   ): Promise<SocialMutationResult> {
     const [target] = await this.db
-      .select({ id: user.id })
+      .select({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        username: user.username,
+        displayUsername: user.displayUsername,
+      })
       .from(user)
       .where(and(eq(user.username, rawUsername.toLowerCase()), eq(user.emailVerified, true)))
       .limit(1);
     if (!target) throw new AppError("USER_NOT_FOUND", "No verified player has that username.");
     if (target.id === currentUserId) {
       throw new AppError("CANNOT_ADD_SELF", "You cannot add yourself as a friend.");
+    }
+    const [requester] = await this.db
+      .select({
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        displayUsername: user.displayUsername,
+      })
+      .from(user)
+      .where(eq(user.id, currentUserId))
+      .limit(1);
+    if (!requester) {
+      throw new AppError("UNAUTHENTICATED", "Sign in to continue.");
     }
     const pair = canonicalPair(currentUserId, target.id);
     try {
@@ -230,7 +254,15 @@ export class SocialService {
       }
       throw error;
     }
-    return { affectedUserIds: [currentUserId, target.id], cancelledGameIds: [] };
+    return {
+      affectedUserIds: [currentUserId, target.id],
+      cancelledGameIds: [],
+      friendRequestEmail: {
+        to: target.email,
+        recipientUsername: publicUser(target).username,
+        requesterUsername: publicUser(requester).username,
+      },
+    };
   }
 
   async acceptFriendRequest(requestId: string, currentUserId: string) {

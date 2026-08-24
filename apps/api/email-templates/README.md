@@ -1,4 +1,4 @@
-# Local account email templates
+# Local SMTP email templates
 
 The API renders these files locally and sends the resulting HTML and plain-text
 parts through the configured SMTP server. No Postmark-hosted templates or
@@ -36,6 +36,19 @@ sending a broken message.
   "username": "ExamplePlayer",
   "reset_url": "https://connect.yadayada.co.uk/reset-password/example",
   "expires_in": "1 hour",
+  "support_email": "play@yadayada.co.uk",
+  "current_year": 2026
+}
+```
+
+## Friend-request template model
+
+```json
+{
+  "product_name": "Four in a Row",
+  "username": "ExamplePlayer",
+  "requester_username": "FriendlyRival",
+  "friends_url": "https://connect.yadayada.co.uk/friends",
   "support_email": "play@yadayada.co.uk",
   "current_year": 2026
 }

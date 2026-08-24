@@ -250,6 +250,17 @@ integration("GameService with PostgreSQL", () => {
       social.sendFriendRequest(hostId, "Guest"),
     ]);
     expect(duplicateResults.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const createdRequest = duplicateResults.find(
+      (
+        result,
+      ): result is PromiseFulfilledResult<Awaited<ReturnType<typeof social.sendFriendRequest>>> =>
+        result.status === "fulfilled",
+    )!.value;
+    expect(createdRequest.friendRequestEmail).toEqual({
+      to: "guest@test.local",
+      recipientUsername: "Guest",
+      requesterUsername: "Host",
+    });
     expect((await social.getSnapshot(guestId)).incomingFriendRequests).toHaveLength(1);
 
     const requestId = (await social.getSnapshot(guestId)).incomingFriendRequests[0]!.id;

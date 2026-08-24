@@ -4,19 +4,24 @@ import nodemailer from "nodemailer";
 import type { AppConfig } from "./config";
 import type { AppLogger } from "./logger";
 
-interface AccountEmail {
+interface RecipientEmail {
   to: string;
   username: string;
 }
 
 export type EmailMessage =
-  | (AccountEmail & {
+  | (RecipientEmail & {
       kind: "verification";
       verificationUrl: string;
     })
-  | (AccountEmail & {
+  | (RecipientEmail & {
       kind: "password-reset";
       resetUrl: string;
+    })
+  | (RecipientEmail & {
+      kind: "friend-request";
+      requesterUsername: string;
+      friendsUrl: string;
     });
 
 type EmailKind = EmailMessage["kind"];
@@ -69,26 +74,38 @@ export function renderTemplate(source: string, model: TemplateModel, html = fals
   });
 }
 
-function accountEmailModel(message: EmailMessage, config: AppConfig): TemplateModel {
+function emailModel(message: EmailMessage, config: AppConfig): TemplateModel {
   const commonModel = {
     product_name: "Four in a Row",
     username: message.username,
-    expires_in: "1 hour",
     support_email: config.smtp.replyTo,
     current_year: new Date().getUTCFullYear(),
   };
 
-  return message.kind === "verification"
-    ? { ...commonModel, verification_url: message.verificationUrl }
-    : { ...commonModel, reset_url: message.resetUrl };
+  switch (message.kind) {
+    case "verification":
+      return {
+        ...commonModel,
+        verification_url: message.verificationUrl,
+        expires_in: "1 hour",
+      };
+    case "password-reset":
+      return { ...commonModel, reset_url: message.resetUrl, expires_in: "1 hour" };
+    case "friend-request":
+      return {
+        ...commonModel,
+        requester_username: message.requesterUsername,
+        friends_url: message.friendsUrl,
+      };
+  }
 }
 
-export async function renderAccountEmail(
+export async function renderEmail(
   message: EmailMessage,
   config: AppConfig,
 ): Promise<RenderedEmail> {
   const template = await loadLocalTemplate(message.kind);
-  const templateModel = accountEmailModel(message, config);
+  const templateModel = emailModel(message, config);
   return {
     subject: renderTemplate(template.subject, templateModel).trim(),
     text: renderTemplate(template.text, templateModel).trim(),
@@ -111,7 +128,7 @@ export function createEmailSender(config: AppConfig, logger: AppLogger) {
 
   return async (message: EmailMessage) => {
     try {
-      const rendered = await renderAccountEmail(message, config);
+      const rendered = await renderEmail(message, config);
       await transport.sendMail({
         from: config.smtp.from,
         to: message.to,
@@ -121,7 +138,7 @@ export function createEmailSender(config: AppConfig, logger: AppLogger) {
         html: rendered.html,
       });
     } catch (error) {
-      logger.error({ err: error, emailKind: message.kind }, "Unable to send account email");
+      logger.error({ err: error, emailKind: message.kind }, "Unable to send email");
     }
   };
 }

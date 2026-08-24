@@ -1,0 +1,12 @@
+Hi {{username}},
+
+{{requester_username}} sent you a friend request on {{product_name}}.
+
+Review the request and choose whether to accept or decline:
+{{friends_url}}
+
+You can review the request from your Friends page. If you do not recognise this player, you can safely decline or ignore it.
+
+Need help? Email {{support_email}}.
+
+© {{current_year}} {{product_name}}

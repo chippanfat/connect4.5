@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import type { Auth } from "./auth";
+import type { EmailMessage } from "./email";
 import { currentUser, requireAuth } from "./session";
 import type { SocialMutationResult, SocialService } from "./social-service";
 
@@ -12,6 +13,8 @@ const UserParamsSchema = z.object({ userId: z.string().min(1).max(128) });
 interface SocialRouterDependencies {
   auth: Auth;
   social: SocialService;
+  appOrigin: string;
+  sendEmail: (message: EmailMessage) => Promise<void>;
   broadcastAccount: (userId: string) => Promise<void>;
   broadcastGame: (gameId: string) => Promise<void>;
 }
@@ -19,6 +22,8 @@ interface SocialRouterDependencies {
 export function createSocialRouter({
   auth,
   social,
+  appOrigin,
+  sendEmail,
   broadcastAccount,
   broadcastGame,
 }: SocialRouterDependencies) {
@@ -51,7 +56,18 @@ export function createSocialRouter({
     const input = CreateFriendRequestInputSchema.parse(request.body);
     const userId = currentUser(response).id;
     const mutation = await social.sendFriendRequest(userId, input.username);
-    await publishMutation(mutation);
+    await Promise.all([
+      publishMutation(mutation),
+      mutation.friendRequestEmail
+        ? sendEmail({
+            kind: "friend-request",
+            to: mutation.friendRequestEmail.to,
+            username: mutation.friendRequestEmail.recipientUsername,
+            requesterUsername: mutation.friendRequestEmail.requesterUsername,
+            friendsUrl: `${appOrigin}/friends`,
+          })
+        : Promise.resolve(),
+    ]);
     response.status(201).json({ ok: true, data: await social.getSnapshot(userId) });
   });
 

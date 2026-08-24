@@ -153,6 +153,8 @@ app.use(
   createSocialRouter({
     auth,
     social,
+    appOrigin: config.appOrigin,
+    sendEmail,
     broadcastGame: sockets.broadcastGame,
     broadcastAccount: sockets.broadcastAccount,
   }),
