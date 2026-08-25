@@ -15,6 +15,7 @@ import { currentUser, requireAuth } from "./session";
 
 const IdParamsSchema = z.object({ id: z.string().uuid() });
 const InviteParamsSchema = z.object({ code: z.string().min(16).max(32) });
+const HeadToHeadParamsSchema = z.object({ opponentUserId: z.string().min(1).max(128) });
 
 interface RouterDependencies {
   auth: Auth;
@@ -102,6 +103,14 @@ export function createGameRouter({
         query.cursor,
         query.limit,
       ),
+    });
+  });
+
+  router.get("/games/head-to-head/:opponentUserId", async (request, response) => {
+    const { opponentUserId } = HeadToHeadParamsSchema.parse(request.params);
+    response.json({
+      ok: true,
+      data: await games.getHeadToHead(currentUser(response).id, opponentUserId),
     });
   });
 

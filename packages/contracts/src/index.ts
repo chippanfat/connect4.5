@@ -106,6 +106,17 @@ export const GameListItemSchema = GameSnapshotSchema.pick({
 });
 export type GameListItem = z.infer<typeof GameListItemSchema>;
 
+export const HeadToHeadSchema = z.object({
+  viewer: PublicUserSchema,
+  opponent: PublicUserSchema,
+  viewerWins: z.number().int().nonnegative(),
+  opponentWins: z.number().int().nonnegative(),
+  draws: z.number().int().nonnegative(),
+  gamesPlayed: z.number().int().nonnegative(),
+  recentGames: z.array(GameListItemSchema),
+});
+export type HeadToHead = z.infer<typeof HeadToHeadSchema>;
+
 export const InvitePreviewSchema = z.object({
   hostUsername: z.string(),
   turnSeconds: TurnSecondsSchema,

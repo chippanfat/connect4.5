@@ -4,7 +4,7 @@ import type {
   PresenceEvent,
   ServerToClientEvents,
 } from "@four/contracts";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Copy, Flag, RefreshCcw, Wifi, WifiOff } from "lucide-react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -13,6 +13,7 @@ import { io, type Socket } from "socket.io-client";
 import { api } from "../api";
 import { authClient } from "../auth-client";
 import { Alert, PageLoader } from "../components";
+import { HeadToHead } from "../head-to-head";
 
 interface BoardProps {
   game: GameSnapshot;
@@ -102,6 +103,7 @@ function useCountdown(game: GameSnapshot | undefined) {
 export function GamePage() {
   const { gameId = "" } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const initial = useQuery({
     queryKey: ["game", gameId],
@@ -118,6 +120,13 @@ export function GamePage() {
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const game = liveGame?.id === gameId ? liveGame : initial.data;
   const seconds = useCountdown(game);
+  const userId = session?.user.id ?? "";
+  const headToHeadOpponentId = game?.players.find((player) => player.userId !== userId)?.userId;
+
+  useEffect(() => {
+    if (game?.status !== "completed" || !headToHeadOpponentId) return;
+    void queryClient.invalidateQueries({ queryKey: ["head-to-head", headToHeadOpponentId] });
+  }, [game?.endedAt, game?.status, headToHeadOpponentId, queryClient]);
 
   useEffect(() => {
     if (!gameId) return;
@@ -161,7 +170,6 @@ export function GamePage() {
       </main>
     );
 
-  const userId = session?.user.id ?? "";
   const me = game.players.find((player) => player.userId === userId);
   const opponent = game.players.find((player) => player.userId !== userId);
   const opponentUsername = opponent?.username ?? game.pendingInvitee?.username;
@@ -269,6 +277,15 @@ export function GamePage() {
           </div>
         </aside>
         <div className="board-area">
+          {me && opponent && (
+            <HeadToHead
+              className="head-to-head--game"
+              opponentUserId={opponent.userId}
+              opponentUsername={opponent.username}
+              viewerUserId={me.userId}
+              viewerUsername={me.username}
+            />
+          )}
           <div className="game-status">
             <p>{statusText}</p>
             {game.status === "active" && (

@@ -25,51 +25,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { authClient } from "../auth-client";
 import { Alert } from "../components";
+import { GameResultRow } from "../head-to-head";
 import { useSocial } from "../social-context";
-
-function opponentName(game: GameListItem, userId: string) {
-  return (
-    game.players.find((player) => player.userId !== userId)?.username ??
-    game.pendingInvitee?.username ??
-    "Waiting for a friend"
-  );
-}
-
-function GameRow({ game, userId }: { game: GameListItem; userId: string }) {
-  const opponent = opponentName(game, userId);
-  const result =
-    game.status === "waiting"
-      ? "Invite ready"
-      : game.status === "active"
-        ? "In progress"
-        : game.endReason === "draw"
-          ? "Draw"
-          : game.winnerUserId === userId
-            ? "You won"
-            : game.endReason === "cancelled" || game.endReason === "expired"
-              ? "Not played"
-              : "You lost";
-  return (
-    <Link className="game-list-row" to={`/game/${game.id}`}>
-      <span
-        className={`mini-disc mini-disc--${game.players.find((player) => player.userId === userId)?.color ?? "empty"}`}
-      />
-      <span className="game-list-row__main">
-        <strong>{opponent}</strong>
-        <small>
-          {new Date(game.createdAt).toLocaleDateString(undefined, {
-            month: "short",
-            day: "numeric",
-          })}{" "}
-          · {game.turnSeconds}s turns
-        </small>
-      </span>
-      <span className={`result-label result-label--${result.replaceAll(" ", "-").toLowerCase()}`}>
-        {result}
-      </span>
-    </Link>
-  );
-}
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -355,7 +312,7 @@ export function DashboardPage() {
                   </div>
                 </article>
               ) : (
-                <GameRow key={game.id} game={game} userId={userId} />
+                <GameResultRow key={game.id} game={game} userId={userId} />
               ),
             )}
           </div>
@@ -384,7 +341,7 @@ export function DashboardPage() {
         ) : history.data?.items.length ? (
           <div className="game-list">
             {history.data.items.map((game) => (
-              <GameRow key={game.id} game={game} userId={userId} />
+              <GameResultRow key={game.id} game={game} userId={userId} />
             ))}
           </div>
         ) : (

@@ -10,7 +10,9 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
+import { authClient } from "../auth-client";
 import { Alert } from "../components";
+import { HeadToHead } from "../head-to-head";
 import { useSocial } from "../social-context";
 
 type SocialAction =
@@ -40,6 +42,7 @@ function socialActionRequest(action: SocialAction) {
 export function FriendsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { data: session } = authClient.useSession();
   const { social, isLoading, error: socialError } = useSocial();
   const [username, setUsername] = useState("");
   const [searchResult, setSearchResult] = useState<UserSearchResult | null>(null);
@@ -86,6 +89,8 @@ export function FriendsPage() {
   }
 
   const actionError = search.error ?? sendRequest.error ?? socialAction.error ?? challenge.error;
+  const currentUsername =
+    session?.user.displayUsername ?? session?.user.username ?? session?.user.name ?? "You";
 
   return (
     <main className="friends-page content-width">
@@ -222,6 +227,13 @@ export function FriendsPage() {
                     <strong>{friend.user.username}</strong>
                     <small>{pending ? "Game invitation pending" : "Ready for a challenge"}</small>
                   </div>
+                  <HeadToHead
+                    className="head-to-head--friend"
+                    opponentUserId={friend.user.userId}
+                    opponentUsername={friend.user.username}
+                    viewerUserId={session?.user.id ?? ""}
+                    viewerUsername={currentUsername}
+                  />
                   <div className="social-row__actions challenge-actions">
                     <label>
                       <span className="sr-only">Turn clock for {friend.user.username}</span>

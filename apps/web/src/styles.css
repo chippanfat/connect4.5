@@ -1115,6 +1115,181 @@ a {
 .board-area {
   min-width: 0;
 }
+
+.head-to-head {
+  min-width: 0;
+  min-height: 2.25rem;
+  padding: 0.42rem 0.58rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  border: 1px solid #cfdaea;
+  border-radius: 999px;
+  color: #53647d;
+  background: #fff;
+  box-shadow: 0 5px 14px rgb(21 54 102 / 7%);
+  cursor: pointer;
+  font-size: 0.74rem;
+  line-height: 1;
+}
+
+.head-to-head:hover {
+  border-color: #9fb9dd;
+  background: #f7faff;
+}
+
+.head-to-head__name {
+  max-width: 8.5rem;
+  overflow: hidden;
+  color: #53647d;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.head-to-head__name:first-child::after {
+  content: ":";
+}
+
+.head-to-head__record + .head-to-head__name::before {
+  content: ":";
+}
+
+.head-to-head__record {
+  color: #123b72;
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.head-to-head svg {
+  margin-left: 0.12rem;
+  flex: 0 0 auto;
+  color: #226ac7;
+}
+
+.head-to-head--game {
+  margin: 0 auto 0.25rem;
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.head-to-head--friend {
+  max-width: min(19rem, 28vw);
+  flex: 0 1 auto;
+}
+
+.head-to-head-dialog {
+  width: min(38rem, calc(100% - 1.5rem));
+  max-height: min(47rem, calc(100dvh - 1.5rem));
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 1.35rem;
+  color: #102448;
+  background: transparent;
+  box-shadow: 0 30px 80px rgb(4 20 51 / 34%);
+}
+
+.head-to-head-dialog::backdrop {
+  background: rgb(4 20 51 / 62%);
+  backdrop-filter: blur(3px);
+}
+
+.head-to-head-dialog__card {
+  max-height: min(47rem, calc(100dvh - 1.5rem));
+  padding: clamp(1rem, 3vw, 1.5rem);
+  overflow: auto;
+  border-radius: 1.35rem;
+  background: #f7f9fc;
+}
+
+.head-to-head-dialog header {
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.head-to-head-dialog header .eyebrow {
+  margin-bottom: 0.25rem;
+  color: #1765ce;
+}
+
+.head-to-head-dialog h2 {
+  margin: 0;
+  color: #13294d;
+  font:
+    800 1.5rem "Manrope",
+    sans-serif;
+}
+
+.head-to-head-dialog__score {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid #d8e2ef;
+  border-radius: 1rem;
+  background: #fff;
+}
+
+.head-to-head-dialog__score > div,
+.head-to-head-dialog__score > p {
+  min-width: 0;
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 0.1rem;
+  text-align: center;
+}
+
+.head-to-head-dialog__score > div > span {
+  max-width: 100%;
+  overflow: hidden;
+  color: #415a7a;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.head-to-head-dialog__score > div > strong {
+  color: #0f56b4;
+  font:
+    800 2rem "Manrope",
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.head-to-head-dialog__score small {
+  color: #7a899f;
+  font-size: 0.72rem;
+}
+
+.head-to-head-dialog__score > p {
+  padding-inline: 0.75rem;
+  border-inline: 1px solid #e0e7f0;
+  color: #738199;
+}
+
+.head-to-head-dialog__score > p strong {
+  color: #1b2e4c;
+  font-size: 1rem;
+}
+
+.head-to-head-dialog__score > p span {
+  font-size: 0.72rem;
+}
+
+.head-to-head-dialog__results {
+  max-height: 23rem;
+  overflow: auto;
+}
+
 .game-status {
   min-height: 3rem;
   margin-bottom: 0.6rem;
@@ -1620,6 +1795,18 @@ a {
   .friend-search-card {
     grid-template-columns: 1fr;
   }
+  .friend-row {
+    flex-wrap: wrap;
+  }
+  .friend-row .head-to-head--friend {
+    width: fit-content;
+    max-width: 100%;
+    order: 3;
+    margin-left: 3.7rem;
+  }
+  .friend-row .social-row__actions {
+    order: 4;
+  }
   .invite-hero {
     grid-template-columns: minmax(180px, 0.55fr) minmax(0, 1fr);
     gap: 2rem;
@@ -1687,6 +1874,9 @@ a {
     padding-left: 3.7rem;
     flex-wrap: wrap;
   }
+  .friend-row .head-to-head--friend {
+    margin-left: 3.7rem;
+  }
   .challenge-actions select {
     flex: 1;
   }
@@ -1725,6 +1915,9 @@ a {
   }
   .player-panel strong {
     max-width: 34vw;
+  }
+  .head-to-head--game .head-to-head__name {
+    max-width: 28vw;
   }
   .avatar-disc {
     width: 3.5rem;
@@ -1783,5 +1976,12 @@ a {
   }
   .player-panel span:last-child {
     display: none;
+  }
+  .head-to-head-dialog__score {
+    padding-inline: 0.7rem;
+    gap: 0.45rem;
+  }
+  .head-to-head-dialog__score > p {
+    padding-inline: 0.5rem;
   }
 }

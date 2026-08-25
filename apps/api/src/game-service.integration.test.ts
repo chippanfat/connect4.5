@@ -141,6 +141,67 @@ integration("GameService with PostgreSQL", () => {
     expect(finished.winnerUserId).not.toBe(finished.currentTurnUserId);
   });
 
+  it("summarizes completed games between two players and returns their recent results", async () => {
+    const hostWin = await service.joinGame(
+      (await service.createGame(hostId, 60)).inviteCode!,
+      guestId,
+    );
+    await service.resign(guestId, {
+      gameId: hostWin.id,
+      commandId: randomUUID(),
+    });
+
+    const guestWin = await service.joinGame(
+      (await service.createGame(hostId, 30)).inviteCode!,
+      guestId,
+    );
+    await service.resign(hostId, {
+      gameId: guestWin.id,
+      commandId: randomUUID(),
+    });
+
+    const draw = await service.joinGame(
+      (await service.createGame(hostId, 120)).inviteCode!,
+      guestId,
+    );
+    await database.db
+      .update(games)
+      .set({
+        status: "completed",
+        endReason: "draw",
+        winnerUserId: null,
+        currentTurnUserId: null,
+        turnDeadlineAt: null,
+        endedAt: new Date(Date.now() + 1_000),
+      })
+      .where(eq(games.id, draw.id));
+
+    const unrelated = await service.joinGame(
+      (await service.createGame(hostId, 60)).inviteCode!,
+      thirdId,
+    );
+    await service.resign(thirdId, {
+      gameId: unrelated.id,
+      commandId: randomUUID(),
+    });
+
+    const headToHead = await service.getHeadToHead(hostId, guestId);
+    expect(headToHead).toMatchObject({
+      viewer: { userId: hostId, username: "Host" },
+      opponent: { userId: guestId, username: "Guest" },
+      viewerWins: 1,
+      opponentWins: 1,
+      draws: 1,
+      gamesPlayed: 3,
+    });
+    expect(headToHead.recentGames).toHaveLength(3);
+    expect(headToHead.recentGames[0]?.id).toBe(draw.id);
+
+    const reversed = await service.getHeadToHead(guestId, hostId, 2);
+    expect(reversed).toMatchObject({ viewerWins: 1, opponentWins: 1, gamesPlayed: 3 });
+    expect(reversed.recentGames).toHaveLength(2);
+  });
+
   it("makes duplicate commands idempotent and rejects stale and out-of-turn moves", async () => {
     const waiting = await service.createGame(hostId, 60);
     const active = await service.joinGame(waiting.inviteCode!, guestId);

@@ -5,6 +5,7 @@ import type {
   GameListItem,
   GameListResponse,
   GameSnapshot,
+  HeadToHead,
   InvitePreview,
   MoveCommand,
   RematchCommand,
@@ -523,6 +524,69 @@ export class GameService {
     return {
       items: snapshots.map(listItem),
       nextCursor: rows.length > limit ? (page.at(-1)?.createdAt.toISOString() ?? null) : null,
+    };
+  }
+
+  async getHeadToHead(
+    viewerUserId: string,
+    opponentUserId: string,
+    recentLimit = 8,
+  ): Promise<HeadToHead> {
+    if (viewerUserId === opponentUserId) {
+      throw new AppError("CANNOT_ADD_SELF", "Choose another player to compare results with.");
+    }
+
+    const pair = or(
+      and(eq(games.hostUserId, viewerUserId), eq(games.guestUserId, opponentUserId)),
+      and(eq(games.hostUserId, opponentUserId), eq(games.guestUserId, viewerUserId)),
+    );
+    const completedPair = and(eq(games.status, "completed"), pair);
+    const [accounts, totals, recentRows] = await Promise.all([
+      this.db
+        .select()
+        .from(user)
+        .where(inArray(user.id, [viewerUserId, opponentUserId])),
+      this.db
+        .select({
+          gamesPlayed: sql<number>`count(*)::int`,
+          viewerWins: sql<number>`coalesce(sum(case when ${games.winnerUserId} = ${viewerUserId} then 1 else 0 end), 0)::int`,
+          opponentWins: sql<number>`coalesce(sum(case when ${games.winnerUserId} = ${opponentUserId} then 1 else 0 end), 0)::int`,
+          draws: sql<number>`coalesce(sum(case when ${games.endReason} = 'draw' then 1 else 0 end), 0)::int`,
+        })
+        .from(games)
+        .where(completedPair),
+      this.db
+        .select({ id: games.id })
+        .from(games)
+        .where(completedPair)
+        .orderBy(desc(games.endedAt), desc(games.createdAt))
+        .limit(recentLimit),
+    ]);
+
+    const accountsById = new Map(accounts.map((account) => [account.id, account]));
+    const viewer = accountsById.get(viewerUserId);
+    const opponent = accountsById.get(opponentUserId);
+    if (!viewer) throw new AppError("UNAUTHENTICATED", "Sign in to compare game results.");
+    if (!opponent) throw new AppError("USER_NOT_FOUND", "This player could not be found.");
+
+    const recentGames = await Promise.all(
+      recentRows.map(async ({ id }) => listItem(await this.getSnapshot(id, viewerUserId))),
+    );
+    const total = totals[0];
+    return {
+      viewer: {
+        userId: viewer.id,
+        username: viewer.displayUsername ?? viewer.username ?? viewer.name,
+      },
+      opponent: {
+        userId: opponent.id,
+        username: opponent.displayUsername ?? opponent.username ?? opponent.name,
+      },
+      viewerWins: total?.viewerWins ?? 0,
+      opponentWins: total?.opponentWins ?? 0,
+      draws: total?.draws ?? 0,
+      gamesPlayed: total?.gamesPlayed ?? 0,
+      recentGames,
     };
   }
 
