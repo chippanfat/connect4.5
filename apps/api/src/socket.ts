@@ -24,6 +24,7 @@ import { AppError, failure } from "./errors";
 import type { GameService } from "./game-service";
 import type { AppLogger } from "./logger";
 import type { Metrics } from "./metrics";
+import type { PushService } from "./push-service";
 import type { SocialService } from "./social-service";
 
 const roomName = (gameId: string) => `game:${gameId}`;
@@ -37,10 +38,11 @@ interface SocketDependencies {
   metrics: Metrics;
   redis: RedisClientType;
   social: SocialService;
+  push: PushService;
 }
 
 export async function createGameSocket(httpServer: HttpServer, dependencies: SocketDependencies) {
-  const { auth, config, games, logger, metrics, redis, social } = dependencies;
+  const { auth, config, games, logger, metrics, push, redis, social } = dependencies;
   const adapterRedis = redis.duplicate();
   await adapterRedis.connect();
 
@@ -221,6 +223,12 @@ export async function createGameSocket(httpServer: HttpServer, dependencies: Soc
                   username: requestedBy.username,
                 },
               });
+            void push.sendToUser(opponent.userId, {
+              title: `${requestedBy.username} requested a rematch`,
+              body: "Open Four in a Row to play them again.",
+              tag: `rematch-request:${result.game.id}`,
+              url: `/game/${result.game.id}`,
+            });
           }
         }
         if (result.nextGame) {

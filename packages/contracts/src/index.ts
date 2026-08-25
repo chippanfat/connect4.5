@@ -31,6 +31,22 @@ export const PublicUserSchema = z.object({
 });
 export type PublicUser = z.infer<typeof PublicUserSchema>;
 
+export const PushSubscriptionInputSchema = z.object({
+  endpoint: z.string().url().max(2_048),
+  expirationTime: z.number().nonnegative().nullable().optional(),
+  keys: z.object({
+    p256dh: z.string().min(1).max(512),
+    auth: z.string().min(1).max(512),
+  }),
+});
+export type PushSubscriptionInput = z.infer<typeof PushSubscriptionInputSchema>;
+
+export const PushConfigSchema = z.object({
+  enabled: z.boolean(),
+  publicKey: z.string().nullable(),
+});
+export type PushConfig = z.infer<typeof PushConfigSchema>;
+
 export const CoordinateSchema = z.object({
   row: z.number().int().min(0).max(5),
   column: z.number().int().min(0).max(6),

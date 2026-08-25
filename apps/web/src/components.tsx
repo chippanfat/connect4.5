@@ -4,6 +4,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import { authClient } from "./auth-client";
 import { SocialProvider } from "./social";
 import { useSocial } from "./social-context";
+import { disableWebPush } from "./push-notifications";
 
 export function Logo() {
   return (
@@ -43,6 +44,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const notificationCount =
     (social?.incomingFriendRequests.length ?? 0) + (social?.incomingGameInvitations.length ?? 0);
   async function signOut() {
+    await disableWebPush().catch(() => undefined);
     await authClient.signOut();
     navigate("/");
   }

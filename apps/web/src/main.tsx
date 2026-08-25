@@ -5,6 +5,13 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
 import "./styles.css";
+import { registerNotificationServiceWorker } from "./push-notifications";
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void registerNotificationServiceWorker().catch(() => undefined);
+  });
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {

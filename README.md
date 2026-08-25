@@ -51,6 +51,18 @@ On a single Droplet, the deployed project lives at `/opt/four-in-a-row`. Useful 
 
 The included backup timer retains 14 days of compressed logical dumps under `/var/backups/four-in-a-row`. Copy these backups off the Droplet or enable provider-level backups so a server failure does not remove both the database and its backups.
 
+### Home Screen app and Web Push
+
+The web build includes an installable manifest, app icons, and a service worker. Generate one VAPID key pair for each deployment and keep it stable across releases:
+
+```sh
+corepack pnpm --filter @four/api exec web-push generate-vapid-keys
+```
+
+Put the generated values in the server-side `.env` as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`, and set `VAPID_SUBJECT` to a monitored `mailto:` address or an HTTPS contact URL. Apply the `push_subscriptions` migration before starting the updated API. These keys identify the application server; replacing them requires devices to subscribe again.
+
+On iPhone and iPad, Web Push requires iOS/iPadOS 16.4 or newer and the site must first be installed using Safari’s Share → Add to Home Screen action. The notification permission button must then be used inside the installed app. Android and desktop browsers can enable notifications directly when their browser supports the Push API. See [WebKit’s iOS Web Push announcement](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/) for the platform requirements.
+
 ### SMTP email
 
 For Postmark's default transactional stream, configure the API service with `SMTP_HOST=smtp.postmarkapp.com`, `SMTP_PORT=587`, `SMTP_SECURE=false`, and `SMTP_REQUIRE_TLS=true`. Use either a message-stream SMTP token's access key and secret key as `SMTP_USER` and `SMTP_PASSWORD`, or use the Postmark Server API token for both values. `EMAIL_FROM` must use a sender signature or domain verified in Postmark. Keep all SMTP credentials only in the server-side `.env` file.

@@ -20,6 +20,8 @@ import { createGameRouter } from "./game-router";
 import { GameService } from "./game-service";
 import { createLogger } from "./logger";
 import { createMetrics } from "./metrics";
+import { createPushRouter } from "./push-router";
+import { PushService } from "./push-service";
 import { createSocialRouter } from "./social-router";
 import { SocialService } from "./social-service";
 import { createGameSocket } from "./socket";
@@ -38,6 +40,7 @@ const sendEmail = createEmailSender(config, logger);
 const auth = createAuth(db, config, sendEmail);
 const games = new GameService(db);
 const social = new SocialService(db);
+const push = new PushService(db, config, logger);
 const app = express();
 const httpServer = createServer(app);
 const sockets = await createGameSocket(httpServer, {
@@ -48,6 +51,7 @@ const sockets = await createGameSocket(httpServer, {
   logger,
   metrics,
   redis,
+  push,
 });
 
 app.set("trust proxy", 1);
@@ -119,7 +123,7 @@ app.use((request, response, next) => {
   next();
 });
 app.use(
-  ["/api/users/search", "/api/friend-requests", "/api/game-invitations", "/api/games"],
+  ["/api/users/search", "/api/friend-requests", "/api/game-invitations", "/api/games", "/api/push"],
   socialLimiter,
 );
 
@@ -147,6 +151,7 @@ app.use(
     broadcastGame: sockets.broadcastGame,
     broadcastAccount: sockets.broadcastAccount,
     notifyGameInvitation: sockets.notifyGameInvitation,
+    push,
   }),
 );
 app.use(
@@ -160,6 +165,7 @@ app.use(
     broadcastAccount: sockets.broadcastAccount,
   }),
 );
+app.use("/api", createPushRouter({ auth, push }));
 app.use(createErrorHandler(logger));
 
 const updateSubscriber = redis.duplicate();

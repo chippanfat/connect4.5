@@ -1,13 +1,35 @@
+import type { PushConfig } from "@four/contracts";
 import { BellRing } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
+import { api } from "../api";
 import { authClient } from "../auth-client";
 import {
-  getBrowserNotificationPermission,
-  requestBrowserNotificationPermission,
-  type BrowserNotificationPermission,
-} from "../browser-notifications";
+  disableWebPush,
+  enableWebPush,
+  getWebPushStatus,
+  type WebPushStatus,
+} from "../push-notifications";
 import { Alert } from "../components";
+
+function notificationDescription(status: WebPushStatus) {
+  switch (status) {
+    case "enabled":
+      return "Enabled on this device. You’ll be notified about game invitations and rematch requests.";
+    case "denied":
+      return "Blocked by your device. Allow notifications for Four in your device settings.";
+    case "install-required":
+      return "On iPhone or iPad, open this site in Safari, tap Share, choose Add to Home Screen, then open Four from your Home Screen and return here.";
+    case "unsupported":
+      return "Web notifications are not supported by this browser or device.";
+    case "unavailable":
+      return "Web notifications are temporarily unavailable.";
+    case "checking":
+      return "Checking notification support on this device…";
+    default:
+      return "Get alerts for new game invitations and rematch requests, even when Four is closed.";
+  }
+}
 
 export function AccountPage() {
   const { data: session } = authClient.useSession();
@@ -15,17 +37,51 @@ export function AccountPage() {
   const [newPassword, setNewPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notificationPermission, setNotificationPermission] =
-    useState<BrowserNotificationPermission>(getBrowserNotificationPermission);
+  const [pushConfig, setPushConfig] = useState<PushConfig | null>(null);
+  const [notificationStatus, setNotificationStatus] = useState<WebPushStatus>("checking");
+  const [notificationError, setNotificationError] = useState<string | null>(null);
 
   useEffect(() => {
-    const refreshPermission = () => setNotificationPermission(getBrowserNotificationPermission());
-    window.addEventListener("focus", refreshPermission);
-    return () => window.removeEventListener("focus", refreshPermission);
+    let active = true;
+    const refreshStatus = async () => {
+      try {
+        const config = await api<PushConfig>("/api/push/config");
+        const status = await getWebPushStatus(config);
+        if (active) {
+          setPushConfig(config);
+          setNotificationStatus(status);
+        }
+      } catch {
+        if (active) setNotificationStatus("unavailable");
+      }
+    };
+    const handleFocus = () => void refreshStatus();
+    void refreshStatus();
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", handleFocus);
+    };
   }, []);
 
   async function enableBrowserNotifications() {
-    setNotificationPermission(await requestBrowserNotificationPermission());
+    if (!pushConfig) return;
+    setNotificationError(null);
+    try {
+      setNotificationStatus(await enableWebPush(pushConfig));
+    } catch {
+      setNotificationError("Notifications could not be enabled. Please try again.");
+    }
+  }
+
+  async function disableBrowserNotifications() {
+    if (!pushConfig) return;
+    setNotificationError(null);
+    try {
+      setNotificationStatus(await disableWebPush(pushConfig));
+    } catch {
+      setNotificationError("Notifications could not be fully disabled. Please try again.");
+    }
   }
 
   async function changePassword(event: FormEvent) {
@@ -104,24 +160,30 @@ export function AccountPage() {
               <BellRing />
             </span>
             <div>
-              <h2>Browser notifications</h2>
-              <p>
-                {notificationPermission === "granted"
-                  ? "Enabled. You’ll be notified about new game invitations and rematch requests."
-                  : notificationPermission === "denied"
-                    ? "Blocked by your browser. Allow notifications for this site in your browser settings."
-                    : notificationPermission === "unsupported"
-                      ? "Notifications are not supported by this browser."
-                      : "Get alerts for new game invitations and rematch requests."}
-              </p>
+              <h2>App notifications</h2>
+              <p>{notificationDescription(notificationStatus)}</p>
+              {notificationError && (
+                <p className="notification-setting__error" role="alert">
+                  {notificationError}
+                </p>
+              )}
             </div>
-            {notificationPermission === "default" && (
+            {notificationStatus === "default" && (
               <button
                 className="button button--soft"
                 type="button"
                 onClick={() => void enableBrowserNotifications()}
               >
                 Enable notifications
+              </button>
+            )}
+            {notificationStatus === "enabled" && (
+              <button
+                className="button button--soft"
+                type="button"
+                onClick={() => void disableBrowserNotifications()}
+              >
+                Disable on this device
               </button>
             )}
           </div>

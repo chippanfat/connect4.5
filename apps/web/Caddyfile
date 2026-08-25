@@ -24,6 +24,8 @@
 
 	@assets path /assets/*
 	header @assets Cache-Control "public, max-age=31536000, immutable"
+	@appMetadata path /sw.js /manifest.webmanifest
+	header @appMetadata Cache-Control "no-cache"
 
 	handle {
 		root * /srv

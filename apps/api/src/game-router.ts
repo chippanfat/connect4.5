@@ -10,6 +10,7 @@ import type { Auth } from "./auth";
 import type { AppConfig } from "./config";
 import { AppError } from "./errors";
 import type { GameService } from "./game-service";
+import type { PushService } from "./push-service";
 import { currentUser, requireAuth } from "./session";
 
 const IdParamsSchema = z.object({ id: z.string().uuid() });
@@ -22,6 +23,7 @@ interface RouterDependencies {
   broadcastGame: (gameId: string) => Promise<void>;
   broadcastAccount: (userId: string) => Promise<void>;
   notifyGameInvitation: (inviteeUserId: string, event: GameInvitationNotificationEvent) => void;
+  push: PushService;
 }
 
 export function createGameRouter({
@@ -31,6 +33,7 @@ export function createGameRouter({
   broadcastGame,
   broadcastAccount,
   notifyGameInvitation,
+  push,
 }: RouterDependencies) {
   const router = Router();
 
@@ -59,10 +62,17 @@ export function createGameRouter({
       await Promise.all([broadcastAccount(userId), broadcastAccount(game.pendingInvitee.userId)]);
       const host = game.players.find((player) => player.userId === game.hostUserId);
       if (host) {
-        notifyGameInvitation(game.pendingInvitee.userId, {
+        const invitation = {
           gameId: game.id,
           host: { userId: host.userId, username: host.username },
           turnSeconds: game.turnSeconds,
+        } satisfies GameInvitationNotificationEvent;
+        notifyGameInvitation(game.pendingInvitee.userId, invitation);
+        void push.sendToUser(game.pendingInvitee.userId, {
+          title: `${host.username} invited you to play`,
+          body: `Open Four in a Row to answer their ${game.turnSeconds}-second game invitation.`,
+          tag: `game-invitation:${game.id}`,
+          url: "/dashboard",
         });
       }
     }

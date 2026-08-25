@@ -1059,6 +1059,12 @@ a {
   line-height: 1.5;
 }
 
+.notification-setting .notification-setting__error {
+  margin-top: 0.5rem;
+  color: #b42318;
+  font-weight: 700;
+}
+
 .live-game-page {
   min-height: calc(100dvh - 4.75rem);
   padding: 1.25rem 0 max(2rem, env(safe-area-inset-bottom));

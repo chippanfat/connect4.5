@@ -100,6 +100,24 @@ export const verification = pgTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("push_subscriptions_endpoint_idx").on(table.endpoint),
+    index("push_subscriptions_user_id_idx").on(table.userId),
+  ],
+);
+
 export const gameStatusEnum = pgEnum("game_status", [
   "waiting",
   "active",
@@ -270,6 +288,7 @@ export const rematchRequests = pgTable(
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  pushSubscriptions: many(pushSubscriptions),
   friendshipsAsA: many(friendships, { relationName: "friendshipUserA" }),
   friendshipsAsB: many(friendships, { relationName: "friendshipUserB" }),
 }));
@@ -293,6 +312,10 @@ export const sessionRelations = relations(session, ({ one }) => ({
 
 export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, { fields: [account.userId], references: [user.id] }),
+}));
+
+export const pushSubscriptionRelations = relations(pushSubscriptions, ({ one }) => ({
+  user: one(user, { fields: [pushSubscriptions.userId], references: [user.id] }),
 }));
 
 export const gameRelations = relations(games, ({ many, one }) => ({
@@ -327,6 +350,7 @@ export const schema = {
   session,
   account,
   verification,
+  pushSubscriptions,
   friendships,
   games,
   gameMoves,
@@ -334,6 +358,7 @@ export const schema = {
   userRelations,
   sessionRelations,
   accountRelations,
+  pushSubscriptionRelations,
   friendshipRelations,
   gameRelations,
   moveRelations,
@@ -343,3 +368,4 @@ export const schema = {
 export type GameRow = typeof games.$inferSelect;
 export type NewGameRow = typeof games.$inferInsert;
 export type UserRow = typeof user.$inferSelect;
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
